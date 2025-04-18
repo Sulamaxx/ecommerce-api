@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Cart extends Model
+class OrderItem extends Model
 {
     use HasFactory;
 
@@ -13,17 +13,19 @@ class Cart extends Model
      * The attributes that are mass assignable.
      */
     protected $fillable = [
-        'user_id',
+        'order_id',
         'product_id',
         'quantity',
+        'total',
+        'discount',
     ];
 
     /**
-     * Define the relationship to the User.
+     * Define the relationship to the Order.
      */
-    public function user()
+    public function order()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Order::class);
     }
 
     /**
