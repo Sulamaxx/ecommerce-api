@@ -25,12 +25,17 @@ class AuthController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required',
+            'mobile' => ['required', 'regex:/^0[7-9]{1}[0-9]{8}$/'],
             'email' => 'required|email|unique:users',
-            'password' => 'required|confirmed'
+            'password' => 'required|confirmed',
+        ], [
+            'mobile.regex' => 'Please enter a valid Sri Lankan mobile number.',
         ]);
+
 
         $user = User::create([
             'name' => $validated['name'],
+            'mobile' => $validated['mobile'],
             'email' => $validated['email'],
             'password' => bcrypt($validated['password']),
         ]);
