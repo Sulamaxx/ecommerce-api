@@ -21,6 +21,7 @@ return new class extends Migration {
             $table->string('currency')->default(value: "LKR");
             $table->boolean('is_new')->default(true);
             $table->integer('rating')->default(5);
+            $table->integer('initial_stock');
             $table->integer('stock');
             $table->timestamps();
         });

@@ -27,7 +27,7 @@ class ProductController extends Controller
             'category' => 'required|string|max:255',
             'brandName' => 'nullable|string|max:255',
             'sku' => 'required|string|max:255|unique:products,name',
-            'stockQuantity' => 'required|integer|min:0',
+            'stockQuantity' => 'required|integer|min:1',
             'price' => 'required|integer|min:0',
             'discountPercentage' => 'required|integer|min:0',
             'images' => 'required|array|min:1|max:3',
@@ -59,6 +59,7 @@ class ProductController extends Controller
             $product->category = $request->category;
             $product->price = $price;
             $product->discount = $discount;
+            $product->initial_stock = $request->stockQuantity;
             $product->stock = $request->stockQuantity;
 
             // Handle the user guide PDF if uploaded
