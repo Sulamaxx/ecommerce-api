@@ -392,4 +392,87 @@ class ProductController extends Controller
         }
     }
 
+    /**
+ * Get paginated products.
+ *
+ * @param  \Illuminate\Http\Request  $request
+ * @return \Illuminate\Http\Response
+ */
+public function getPaginatedProducts(Request $request)
+{
+    try {
+        // Default to page 1 if not specified
+        $page = $request->input('page', 1);
+        
+        // Fixed items per page to 9 as requested
+        $perPage = 9;
+        
+        // Start with a base query
+        $query = Product::with('images');
+        
+        // Apply category filter if provided
+        if ($request->has('category') && $request->category !== 'ALL') {
+            $query->where('category', $request->category);
+        }
+        
+        // Apply search filter if provided
+        if ($request->has('search') && !empty($request->search)) {
+            $searchTerm = $request->search;
+            $query->where(function($q) use ($searchTerm) {
+                $q->where('name', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('description', 'LIKE', "%{$searchTerm}%")
+                  ->orWhere('category', 'LIKE', "%{$searchTerm}%");
+            });
+        }
+        
+        // Get the total count for pagination
+        $totalProducts = $query->count();
+        $totalPages = ceil($totalProducts / $perPage);
+        
+        // Get products for current page
+        $products = $query->skip(($page - 1) * $perPage)
+                         ->take($perPage)
+                         ->get();
+        
+        // Format the products for the frontend
+        $formattedProducts = $products->map(function ($product) {
+            // Get the first image or a placeholder
+            $imagePath = $product->images->first() ? 
+                env('APP_ASSET_URL') . '/storage/app/public/' . $product->images->first()->path : 
+                null;
+            
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'category' => $product->category,
+                'price' => (float) $product->price,
+                'image' => $imagePath,
+                'summary' => substr($product->description, 0, 100) . (strlen($product->description) > 100 ? '...' : ''),
+                'sales' => ($product->initial_stock - $product->stock) ?? 0, // Add this field to your database if needed
+                // Add any other fields your frontend might need
+            ];
+        });
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'products' => $formattedProducts,
+                'pagination' => [
+                    'currentPage' => (int)$page,
+                    'totalPages' => $totalPages,
+                    'perPage' => $perPage,
+                    'totalProducts' => $totalProducts
+                ]
+            ]
+        ], 200);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to retrieve products',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 }

@@ -31,6 +31,7 @@ Route::prefix('v2')->group(function () {
     Route::post('/products/add_new_product', [ProductController::class, 'store']);
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
     Route::get('/product/{user_id}', [ProductController::class, 'show']);
+    Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
     Route::get('/products/accessories', [ProductController::class, 'accessories']);
     Route::get('/cart/{user_id}', [CartController::class, 'show']);
     Route::post('/checkout', [OrderController::class, 'checkout']);
