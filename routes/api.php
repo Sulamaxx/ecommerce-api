@@ -28,6 +28,7 @@ Route::prefix('v2')->group(function () {
 
     // 🔓 Public Routes
     Route::post('/products/featured', [ProductController::class, 'featured']);
+    Route::post('/products/add_new_product', [ProductController::class, 'store']);
     Route::get('/products/accessories', [ProductController::class, 'accessories']);
     Route::get('/cart/{user_id}', [CartController::class, 'show']);
     Route::post('/checkout', [OrderController::class, 'checkout']);
