@@ -7,7 +7,8 @@ use App\Http\Controllers\API\{
     ProductController,
     CartController,
     OrderController,
-    ContactController
+    ContactController,
+    UserController
 };
 
 Route::prefix('v2')->group(function () {
@@ -37,8 +38,19 @@ Route::prefix('v2')->group(function () {
     Route::post('/checkout', [OrderController::class, 'checkout']);
     Route::get('/contact/sendMessage', [ContactController::class, 'send']);
 
+
     // 🔒 Protected Routes (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
+
+        // User routes
+        Route::prefix('users')->group(function () {
+            Route::get('/', [UserController::class, 'index']);
+            Route::get('/paginated', [UserController::class, 'getPaginatedUsers']);
+            Route::post('/', [UserController::class, 'store']);
+            Route::get('/{id}', [UserController::class, 'show']);
+            Route::put('/{id}', [UserController::class, 'update']);
+            Route::delete('/{id}', [UserController::class, 'destroy']);
+        });
 
         // User Info
         Route::get('/user', function (Request $request) {
@@ -56,5 +68,4 @@ Route::prefix('v2')->group(function () {
         Route::post('/users/list', [AuthController::class, 'listUsers']);
         Route::post('/orders/history', [OrderController::class, 'orderHistory']);
     });
-
 });
