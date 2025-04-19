@@ -319,4 +319,76 @@ class ProductController extends Controller
             'data' => $product
         ], 200);
     }
+
+   /**
+     * Get filtered products based on category and ensure they are in stock.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @return \Illuminate\Http\Response
+     */
+    public function getFilteredProducts(Request $request)
+    {
+        try {
+            // Start with a base query that always checks for stock > 0
+            $query = Product::with('images')
+                ->where('stock', '>', 0);
+            
+            // Apply category filter if provided
+            if ($request->has('category') && $request->category !== 'All Categories') {
+                $query->where('category', $request->category);
+            }
+            
+            // Apply price range filter if provided
+            if ($request->has('priceRange')) {
+                switch ($request->priceRange) {
+                    case 'Under LKR 1000':
+                        $query->where('price', '<', 1000);
+                        break;
+                    case 'LKR 1000 - LKR 2000':
+                        $query->whereBetween('price', [1000, 2000]);
+                        break;
+                    case 'Over LKR 2000':
+                        $query->where('price', '>', 2000);
+                        break;
+                }
+            }
+            
+            // Get the products
+            $products = $query->get();
+            
+            // Format the response to match your React component's expected structure
+            $formattedProducts = $products->map(function ($product) {
+                // Get the first image or a placeholder
+                $imagePath = $product->images->first() ? 
+                    env('APP_ASSET_URL') . '/storage/app/public/' . $product->images->first()->path : 
+                    null;
+                
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'price' => (float) $product->price,
+                    'currency' => $product->currency,
+                    'description' => $product->description,
+                    'image' => $imagePath,
+                    'rating' => $product->rating,
+                    'isNew' => (bool) $product->is_new,
+                    'discount' => $product->discount > 0 ? (float) $product->discount : null,
+                    'category' => $product->category
+                ];
+            });
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => $formattedProducts
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve products',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }
