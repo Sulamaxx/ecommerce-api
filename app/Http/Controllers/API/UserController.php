@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
 
 class UserController extends Controller
 {
@@ -206,10 +207,10 @@ class UserController extends Controller
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function update(Request $request, $id)
+    public function update(Request $request)
     {
         try {
-            $user = User::findOrFail($id);
+            $user = User::findOrFail(auth()->id());
             
             // Validate the request data
             $validator = Validator::make($request->all(), [
@@ -219,7 +220,7 @@ class UserController extends Controller
                     'string',
                     'email',
                     'max:255',
-                    Rule::unique('users')->ignore($id)
+                    Rule::unique('users')->ignore(auth()->id()),
                 ],
                 'password' => 'nullable|string|min:8',
                 'first_name' => 'nullable|string|max:255',

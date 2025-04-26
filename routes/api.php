@@ -33,7 +33,6 @@ Route::prefix('v2')->group(function () {
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
     Route::get('/product/{user_id}', [ProductController::class, 'show']);
     Route::get('/products/accessories', [ProductController::class, 'accessories']);
-    Route::get('/cart/{user_id}', [CartController::class, 'show']);
     Route::post('/checkout', [OrderController::class, 'checkout']);
     Route::get('/contact/sendMessage', [ContactController::class, 'send']);
     
@@ -49,7 +48,7 @@ Route::prefix('v2')->group(function () {
             Route::get('/paginated', [UserController::class, 'getPaginatedUsers']);
             Route::post('/', [UserController::class, 'store']);
             Route::get('/{id}', [UserController::class, 'show']);
-            Route::put('/{id}', [UserController::class, 'update']);
+            Route::put('/', [UserController::class, 'update']);
             Route::delete('/{id}', [UserController::class, 'destroy']);
         });
 
