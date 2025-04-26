@@ -59,7 +59,11 @@ Route::prefix('v2')->group(function () {
         });
 
         // Cart
-        Route::post('/cart/add', [CartController::class, 'add']);
+        Route::post('/cart/add', [CartController::class, 'addToCart']);
+        Route::get('/cart', [CartController::class, 'getCartItems']);
+        Route::put('/cart/{id}', [CartController::class, 'updateCartItem']);
+        Route::delete('/cart/{id}', [CartController::class, 'deleteCartItem']);
+        // Route::delete('/cart', [CartController::class, 'clearCart']);
 
         // Checkout
         Route::post('/checkout/details', [OrderController::class, 'saveDetails']);
