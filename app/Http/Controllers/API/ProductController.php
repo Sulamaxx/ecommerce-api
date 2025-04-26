@@ -361,7 +361,7 @@ class ProductController extends Controller
             $formattedProducts = $products->map(function ($product) {
                 // Get the first image or a placeholder
                 $imagePath = $product->images->first() ? 
-                    env('APP_ASSET_URL') . '/storage/app/public/' . $product->images->first()->path : 
+                    env('APP_ASSET_URL') . '/storage/' . $product->images->first()->path : 
                     null;
                 
                 return [
@@ -438,7 +438,7 @@ public function getPaginatedProducts(Request $request)
         $formattedProducts = $products->map(function ($product) {
             // Get the first image or a placeholder
             $imagePath = $product->images->first() ? 
-                env('APP_ASSET_URL') . '/storage/app/public/' . $product->images->first()->path : 
+                env('APP_ASSET_URL') . '/storage/' . $product->images->first()->path : 
                 null;
             
             return [

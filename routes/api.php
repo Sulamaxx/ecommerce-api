@@ -32,16 +32,17 @@ Route::prefix('v2')->group(function () {
     Route::post('/products/add_new_product', [ProductController::class, 'store']);
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
     Route::get('/product/{user_id}', [ProductController::class, 'show']);
-    Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
     Route::get('/products/accessories', [ProductController::class, 'accessories']);
     Route::get('/cart/{user_id}', [CartController::class, 'show']);
     Route::post('/checkout', [OrderController::class, 'checkout']);
     Route::get('/contact/sendMessage', [ContactController::class, 'send']);
-
-
+    
+    
     // 🔒 Protected Routes (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
-
+        
+        Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
+        
         // User routes
         Route::prefix('users')->group(function () {
             Route::get('/', [UserController::class, 'index']);
@@ -65,7 +66,6 @@ Route::prefix('v2')->group(function () {
         Route::post('/checkout/payment', [OrderController::class, 'makePayment']);
 
         // Admin/Advanced
-        Route::post('/users/list', [AuthController::class, 'listUsers']);
         Route::post('/orders/history', [OrderController::class, 'orderHistory']);
     });
 });
