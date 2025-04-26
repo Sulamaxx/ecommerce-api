@@ -33,7 +33,6 @@ Route::prefix('v2')->group(function () {
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
     Route::get('/product/{user_id}', [ProductController::class, 'show']);
     Route::get('/products/accessories', [ProductController::class, 'accessories']);
-    Route::post('/checkout', [OrderController::class, 'checkout']);
     Route::get('/contact/sendMessage', [ContactController::class, 'send']);
     
     
@@ -51,11 +50,14 @@ Route::prefix('v2')->group(function () {
             Route::put('/', [UserController::class, 'update']);
             Route::delete('/{id}', [UserController::class, 'destroy']);
         });
-
+        
         // User Info
         Route::get('/user', function (Request $request) {
             return $request->user();
         });
+
+        Route::post('/checkout', [OrderController::class, 'saveOrder']);
+        Route::put('/order/{id}', [OrderController::class, 'updateOrder']);
 
         // Cart
         Route::post('/cart/add', [CartController::class, 'addToCart']);
