@@ -73,7 +73,7 @@ class OrderController extends Controller
             // Calculate order total
             $total = 0;
             foreach ($cartItems as $item) {
-                $total += $item->product->price * $item->quantity;
+                $total += ($item->product->price - $item->product->discount) * $item->quantity;
             }
 
             // Apply discount and tax
