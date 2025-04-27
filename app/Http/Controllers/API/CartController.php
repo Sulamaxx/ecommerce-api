@@ -94,7 +94,7 @@ class CartController extends Controller
         $formattedCartItems = $cartItems->map(function($item) {
             // Get the first image for each product
             $productImage = $item->product->images()->first();
-            $imagePath = $productImage ? $productImage->path : null;
+            $imagePath = $productImage ?  env('APP_ASSET_URL') . '/storage/' . $productImage->path : null;
             
             return [
                 'id' => $item->id,
