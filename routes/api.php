@@ -71,6 +71,6 @@ Route::prefix('v2')->group(function () {
         Route::post('/checkout/payment', [OrderController::class, 'makePayment']);
 
         // Admin/Advanced
-        Route::post('/orders/history', [OrderController::class, 'orderHistory']);
+        Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
     });
 });

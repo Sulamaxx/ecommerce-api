@@ -84,7 +84,7 @@ class OrderController extends Controller
                 'user_id' => $userId,
                 'shipping_address' => $request->shipping_address,
                 'payment_method' => $request->payment_method,
-                'status' => 'pending',
+                'status' => 'processing',
                 'total' => $total,
                 'discount' => $request->discount,
                 'tax' => $request->tax,
@@ -153,7 +153,7 @@ class OrderController extends Controller
         // Validate request data
         $validator = Validator::make($request->all(), [
             'payment_method' => 'sometimes|string',
-            'status' => 'sometimes|string|in:pending,processing,shipped,completed,cancelled',
+            'status' => 'sometimes|string|in:processing,shipped,delivered,cancelled',
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             'country' => 'sometimes|string|max:255',
@@ -236,6 +236,145 @@ class OrderController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Failed to update order', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+     /**
+     * Get paginated order history for the authenticated user
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getOrderHistoryByUser(Request $request)
+    {
+        try {
+            // Default to page 1 if not specified
+            $page = $request->input('page', 1);
+            // Fixed items per page to 10
+            $perPage = 10;
+            
+            // Start with a base query for the current user's orders
+            $userId = auth()->id();
+            $query = Order::where('user_id', $userId);
+            
+            // Apply search filter if provided
+            if ($request->has('search') && !empty($request->search)) {
+                $searchTerm = $request->search;
+                $query->where(function($q) use ($searchTerm) {
+                    $q->where('id', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('status', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('first_name', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('postal_code', 'LIKE', "%{$searchTerm}%");
+                });
+            }
+            
+            // Apply status filter if provided
+            if ($request->has('status') && !empty($request->status)) {
+                $query->where('status', $request->status);
+            }
+            
+            // Sort by created_at in descending order (latest first)
+            $query->orderBy('created_at', 'desc');
+            
+            // Get the total count for pagination
+            $totalOrders = $query->count();
+            $totalPages = ceil($totalOrders / $perPage);
+            
+            // Get orders for current page
+            $orders = $query->skip(($page - 1) * $perPage)
+                            ->take($perPage)
+                            ->get();
+            
+            // Format the orders for the frontend
+            $formattedOrders = $orders->map(function ($order) {
+                return [
+                    'id' => str_pad($order->id, 4, '0', STR_PAD_LEFT),
+                    'total' => number_format($order->total, 2),
+                    'date' => $order->created_at->format('M jS, Y'),
+                    'status' => ucfirst($order->status)
+                ];
+            });
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'orders' => $formattedOrders,
+                    'pagination' => [
+                        'currentPage' => (int)$page,
+                        'totalPages' => $totalPages,
+                        'perPage' => $perPage,
+                        'totalOrders' => $totalOrders
+                    ]
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve order history',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+         /**
+     * Get paginated order history for the authenticated user
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getAllOrderHistory(Request $request)
+    {
+        try {
+            // Default to page 1 if not specified
+            $page = $request->input('page', 1);
+            // Fixed items per page to 10
+            $perPage = 10;
+ 
+            $query = Order::query();            
+            
+            // Sort by created_at in descending order (latest first)
+            $query->orderBy('created_at', 'desc');
+            
+            // Get the total count for pagination
+            $totalOrders = $query->count();
+            $totalPages = ceil($totalOrders / $perPage);
+            
+            // Get orders for current page
+            $orders = $query->skip(($page - 1) * $perPage)
+                            ->take($perPage)
+                            ->get();
+            
+            // Format the orders for the frontend
+            $formattedOrders = $orders->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'total' => number_format($order->total, 2),
+                    'date' => $order->created_at->format('M jS, Y'),
+                    'status' => ucfirst($order->status)
+                ];
+            });
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'orders' => $formattedOrders,
+                    'pagination' => [
+                        'currentPage' => (int)$page,
+                        'totalPages' => $totalPages,
+                        'perPage' => $perPage,
+                        'totalOrders' => $totalOrders
+                    ]
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve order history',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 }
