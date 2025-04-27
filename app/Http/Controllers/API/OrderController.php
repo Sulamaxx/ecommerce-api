@@ -28,6 +28,7 @@ class OrderController extends Controller
             'last_name' => 'required|string|max:255',
             'country' => 'required|string|max:255',
             'company' => 'nullable|string|max:255',
+            'shipping_address' => 'required|string|max:255',
             'address' => 'required|string|max:255',
             'apartment' => 'nullable|string|max:255',
             'city' => 'required|string|max:255',
@@ -78,24 +79,10 @@ class OrderController extends Controller
             // Apply discount and tax
             $total = $total - $request->discount + $request->tax + $request->shipping_rate;
 
-            // Create shipping address as JSON
-            $shippingAddress = [
-                'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
-                'country' => $request->country,
-                'company' => $request->company,
-                'address' => $request->address,
-                'apartment' => $request->apartment,
-                'city' => $request->city,
-                'state' => $request->state,
-                'postal_code' => $request->postal_code,
-                'phone' => $request->phone
-            ];
-
             // Create the order
             $order = Order::create([
                 'user_id' => $userId,
-                'shipping_address' => json_encode($shippingAddress),
+                'shipping_address' => $request->shipping_address,
                 'payment_method' => $request->payment_method,
                 'status' => 'pending',
                 'total' => $total,
@@ -166,12 +153,13 @@ class OrderController extends Controller
         // Validate request data
         $validator = Validator::make($request->all(), [
             'payment_method' => 'sometimes|string',
-            'status' => 'sometimes|string|in:pending,processing,completed,cancelled',
+            'status' => 'sometimes|string|in:pending,processing,shipped,completed,cancelled',
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             'country' => 'sometimes|string|max:255',
             'company' => 'nullable|string|max:255',
             'address' => 'sometimes|string|max:255',
+            'shipping_address' => 'sometimes|string|max:255',
             'apartment' => 'nullable|string|max:255',
             'city' => 'sometimes|string|max:255',
             'state' => 'nullable|string|max:255',
@@ -202,42 +190,38 @@ class OrderController extends Controller
             if ($request->has('payment_method')) {
                 $order->payment_method = $request->payment_method;
             }
-            
             if ($request->has('status')) {
                 $order->status = $request->status;
             }
-
-            // Update address fields if provided
-            foreach ([
-                'first_name', 'last_name', 'country', 'company', 
-                'address', 'apartment', 'city', 'state', 
-                'postal_code', 'phone'
-            ] as $field) {
-                if ($request->has($field)) {
-                    $order->$field = $request->$field;
-                }
+            if ($request->has('first_name')) {
+                $order->first_name = $request->first_name;
             }
-
-            // Update shipping_address JSON if any address field was updated
-            if ($request->hasAny([
-                'first_name', 'last_name', 'country', 'company', 
-                'address', 'apartment', 'city', 'state', 
-                'postal_code', 'phone'
-            ])) {
-                $shippingAddress = [
-                    'first_name' => $order->first_name,
-                    'last_name' => $order->last_name,
-                    'country' => $order->country,
-                    'company' => $order->company,
-                    'address' => $order->address,
-                    'apartment' => $order->apartment,
-                    'city' => $order->city,
-                    'state' => $order->state,
-                    'postal_code' => $order->postal_code,
-                    'phone' => $order->phone
-                ];
-                
-                $order->shipping_address = json_encode($shippingAddress);
+            if ($request->has('last_name')) {
+                $order->last_name = $request->last_name;
+            }
+            if ($request->has('country')) {
+                $order->country = $request->country;
+            }
+            if ($request->has('address')) {
+                $order->address = $request->address;
+            }
+            if ($request->has('shipping_address')) {
+                $order->shipping_address = $request->shipping_address;
+            }
+            if ($request->has('apartment')) {
+                $order->apartment = $request->apartment;
+            }
+            if ($request->has('city')) {
+                $order->city = $request->city;
+            }
+            if ($request->has('state')) {
+                $order->state = $request->state;
+            }
+            if ($request->has('postal_code')) {
+                $order->postal_code = $request->postal_code;
+            }
+            if ($request->has('phone')) {
+                $order->phone = $request->phone;
             }
 
             $order->save();
