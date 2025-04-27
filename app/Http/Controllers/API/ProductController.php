@@ -314,7 +314,12 @@ class ProductController extends Controller
     public function show($id)
     {
         $product = Product::with('images')->findOrFail($id);
-        
+
+        // Add the prefix to each image path
+        foreach ($product->images as $image) {
+            $image->path = env('APP_ASSET_URL') . '/storage/' . $image->path;
+        }
+
         return response()->json([
             'status' => 'success',
             'data' => $product

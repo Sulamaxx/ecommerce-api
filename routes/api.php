@@ -31,7 +31,7 @@ Route::prefix('v2')->group(function () {
     Route::post('/products/featured', [ProductController::class, 'featured']);
     Route::post('/products/add_new_product', [ProductController::class, 'store']);
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
-    Route::get('/product/{user_id}', [ProductController::class, 'show']);
+    Route::get('/product/{product_id}', [ProductController::class, 'show']);
     Route::get('/products/accessories', [ProductController::class, 'accessories']);
     Route::get('/contact/sendMessage', [ContactController::class, 'send']);
     
