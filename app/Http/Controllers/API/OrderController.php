@@ -72,8 +72,10 @@ class OrderController extends Controller
 
             // Calculate order total
             $total = 0;
+            $totalItemDiscount = 0;
             foreach ($cartItems as $item) {
                 $total += ($item->product->price - $item->product->discount) * $item->quantity;
+                $totalItemDiscount += $item->product->discount * $item->quantity;
             }
 
             // Apply discount and tax
@@ -86,7 +88,7 @@ class OrderController extends Controller
                 'payment_method' => $request->payment_method,
                 'status' => 'processing',
                 'total' => $total,
-                'discount' => $request->discount,
+                'discount' => $request->discount + $totalItemDiscount,
                 'tax' => $request->tax,
                 'shipping_rate' => $request->shipping_rate,
                 'first_name' => $request->first_name,
@@ -376,5 +378,190 @@ class OrderController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+     /**
+     * Get paginated detailed orders
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getPaginatedOrderDetails(Request $request)
+    {
+        try {
+            // Default to page 1 if not specified
+            $page = $request->input('page', 1);
+            // Fixed items per page
+            $perPage = 5;
+            
+            // Start with a base query - admins see all orders, users see only their own
+            $query = Order::with(['orderItems.product', 'user']);
+            
+            // if (!auth()->user()->isAdmin()) {
+            //     $query->where('user_id', auth()->id());
+            // }
+            
+            // Apply search filter if provided
+            if ($request->has('search') && !empty($request->search)) {
+                $searchTerm = $request->search;
+                $query->where(function($q) use ($searchTerm) {
+                    $q->where('id', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('status', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('first_name', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('phone', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('city', 'LIKE', "%{$searchTerm}%")
+                      ->orWhere('country', 'LIKE', "%{$searchTerm}%");
+                });
+            }
+            
+            // Apply status filter if provided
+            if ($request->has('status') && !empty($request->status)) {
+                $query->where('status', $request->status);
+            }
+            
+            // Apply date range filter if provided
+            if ($request->has('date_from') && !empty($request->date_from)) {
+                $query->whereDate('created_at', '>=', $request->date_from);
+            }
+            
+            if ($request->has('date_to') && !empty($request->date_to)) {
+                $query->whereDate('created_at', '<=', $request->date_to);
+            }
+            
+            // Sort by created_at in descending order (latest first)
+            $query->orderBy('created_at', 'desc');
+            
+            // Get the total count for pagination
+            $totalOrders = $query->count();
+            $totalPages = ceil($totalOrders / $perPage);
+            
+            // Get orders for current page
+            $orders = $query->skip(($page - 1) * $perPage)
+                            ->take($perPage)
+                            ->get();
+            
+            // Format the orders with detailed information
+            $formattedOrders = $orders->map(function ($order) {
+                return [
+                    'id' => (string)$order->id,
+                    'date' => $order->created_at->format('M d, Y'),
+                    'status' => $order->status,
+                    'customer' => [
+                        'fullName' => $order->first_name . ' ' . $order->last_name,
+                        'email' => $order->user->email,
+                        'phone' => $order->user->mobile
+                    ],
+                    'orderInfo' => [
+                        'shipping' => 'Next express',
+                        'paymentMethod' => $order->payment_method,
+                        'status' => $order->status
+                    ],
+                    'deliverTo' => [
+                        'address' => $this->formatFullAddress($order)
+                    ],
+                    'paymentInfo' => [
+                        // 'cardType' => $this->determineCardType($order->payment_method),
+                        // 'cardNumber' => '**** **** ' . substr($order->payment_method_details ?? '0000', -4),
+                        'paymentMethod' => $order->payment_method,
+                        'businessName' => $order->company ?: ($order->first_name . ' ' . $order->last_name),
+                        'phone' => $order->phone
+                    ],
+                    'products' => $order->orderItems->map(function($item) use ($order) {
+                        return [
+                            'name' => $item->product->name,
+                            'orderId' => '#' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
+                            'quantity' => $item->quantity,
+                            'total' => 'LKR ' . number_format($item->total, 2)
+                        ];
+                    }),
+                    'summary' => [
+                        'subtotal' => 'LKR ' . number_format($order->total - $order->tax - $order->shipping_rate + $order->discount, 2),
+                        'tax' => 'LKR ' . number_format($order->tax, 2),
+                        'discount' => 'LKR ' . number_format($order->discount, 2),
+                        'shipping' => 'LKR ' . number_format($order->shipping_rate, 2),
+                        'total' => 'LKR ' . number_format($order->total, 2)
+                    ]
+                ];
+            });
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'orders' => $formattedOrders,
+                    'pagination' => [
+                        'currentPage' => (int)$page,
+                        'totalPages' => $totalPages,
+                        'perPage' => $perPage,
+                        'totalOrders' => $totalOrders
+                    ]
+                ]
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve order details',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+        /**
+     * Helper method to format full address
+     *
+     * @param Order $order
+     * @return string
+     */
+    private function formatFullAddress(Order $order)
+    {
+        $addressParts = [];
+        
+        if ($order->address) {
+            $addressParts[] = $order->address;
+        }
+        
+        if ($order->apartment) {
+            $addressParts[] = $order->apartment;
+        }
+        
+        if ($order->city) {
+            $addressParts[] = $order->city;
+        }
+        
+        if ($order->state) {
+            $addressParts[] = $order->state;
+        }
+        
+        if ($order->country) {
+            $addressParts[] = $order->country;
+        }
+        
+        if ($order->postal_code) {
+            $addressParts[] = $order->postal_code;
+        }
+        
+        return implode(', ', $addressParts);
+    }
+    
+    /**
+     * Helper method to determine card type
+     *
+     * @param string $paymentMethod
+     * @return string
+     */
+    private function determineCardType($paymentMethod)
+    {
+        // This is a simplified example - you would implement your own logic
+        // based on your payment gateway's data structure
+        if (stripos($paymentMethod, 'visa') !== false) {
+            return 'Visa';
+        } elseif (stripos($paymentMethod, 'mastercard') !== false || stripos($paymentMethod, 'master') !== false) {
+            return 'Master Card';
+        } elseif (stripos($paymentMethod, 'amex') !== false || stripos($paymentMethod, 'american express') !== false) {
+            return 'American Express';
+        }
+        
+        return 'Credit Card'; // Default
     }
 }

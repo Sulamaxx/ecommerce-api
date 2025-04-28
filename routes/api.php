@@ -56,21 +56,22 @@ Route::prefix('v2')->group(function () {
             return $request->user();
         });
 
-        Route::post('/checkout', [OrderController::class, 'saveOrder']);
         Route::put('/order/{id}', [OrderController::class, 'updateOrder']);
-
+        
         // Cart
         Route::post('/cart/add', [CartController::class, 'addToCart']);
         Route::get('/cart', [CartController::class, 'getCartItems']);
         Route::put('/cart/{id}', [CartController::class, 'updateCartItem']);
         Route::delete('/cart/{id}', [CartController::class, 'deleteCartItem']);
         // Route::delete('/cart', [CartController::class, 'clearCart']);
-
+        
         // Checkout
-        Route::post('/checkout/details', [OrderController::class, 'saveDetails']);
-        Route::post('/checkout/payment', [OrderController::class, 'makePayment']);
+        Route::post('/checkout', [OrderController::class, 'saveOrder']);
+        // Route::post('/checkout/details', [OrderController::class, 'saveDetails']);
+        // Route::post('/checkout/payment', [OrderController::class, 'makePayment']);
 
         // Admin/Advanced
+        Route::get('/orders/all', [OrderController::class, 'getPaginatedOrderDetails']);
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
     });
 });
