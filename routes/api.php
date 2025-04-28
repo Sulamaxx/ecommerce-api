@@ -73,5 +73,7 @@ Route::prefix('v2')->group(function () {
         // Admin/Advanced
         Route::get('/orders/all', [OrderController::class, 'getPaginatedOrderDetails']);
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
+        
+        Route::post('/admin/dashboard', [OrderController::class, 'getDashboardData']);
     });
 });

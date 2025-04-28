@@ -564,4 +564,259 @@ class OrderController extends Controller
         
         return 'Credit Card'; // Default
     }
+
+    /**
+     * Get dashboard data including sales statistics, best selling products, and recent orders
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getDashboardData(Request $request)
+    {
+        try {
+            // Get the time period from request, default to monthly
+            $period = $request->input('period', 'monthly');
+
+            // Get dashboard stats
+            $stats = $this->getDashboardStats();
+
+            // Get sales graph data based on selected period
+            $salesData = $this->getSalesGraphData($period);
+
+            // Get best selling products
+            $bestSellingProducts = $this->getBestSellingProducts();
+
+            // Get 6 most recent orders
+            $recentOrders = $this->getRecentOrders();
+
+            return response()->json([
+                'status' => 'success',
+                'data' => [
+                    'stats' => $stats,
+                    'sales_graph' => $salesData,
+                    'best_selling_products' => $bestSellingProducts,
+                    'recent_orders' => $recentOrders
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve dashboard data',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get dashboard statistics (order counts by status) along with date range
+     *
+     * @return array
+     */
+    private function getDashboardStats()
+    {
+        $totalOrders = Order::count();
+        $activeOrders = Order::whereIn('status', ['processing', 'shipped'])->count();
+        $completedOrders = Order::where('status', 'delivered')->count();
+        $returnedOrders = Order::where('status', 'cancelled')->count();
+
+        // Get the minimum (first) and maximum (latest) order dates
+        $firstOrderDate = Order::min('created_at');
+        $latestOrderDate = Order::max('created_at');
+
+        return [
+            'total_orders' => $totalOrders,
+            'active_orders' => $activeOrders,
+            'completed_orders' => $completedOrders,
+            'returned_orders' => $returnedOrders,
+            'start_date' => $firstOrderDate ? date('M d, Y', strtotime($firstOrderDate)) : null,
+            'end_date' => $latestOrderDate ? date('M d, Y', strtotime($latestOrderDate)) : null
+        ];
+    }
+
+    /**
+     * Get sales graph data based on selected period
+     *
+     * @param string $period
+     * @return array
+     */
+    private function getSalesGraphData($period)
+    {
+        $today = now();
+        $salesData = [];
+
+        switch ($period) {
+            case 'weekly':
+                // Last 7 days
+                $startDate = $today->copy()->subDays(6)->startOfDay();
+                $endDate = $today->copy()->endOfDay();
+
+                $dailySales = Order::select(
+                    DB::raw('DATE(created_at) as date'),
+                    DB::raw('SUM(total) as total_sales')
+                )
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->groupBy('date')
+                    ->orderBy('date')
+                    ->get();
+
+                // Create array with all 7 days
+                $currentDate = $startDate->copy();
+                while ($currentDate <= $endDate) {
+                    $dateKey = $currentDate->format('Y-m-d');
+                    $formattedDate = $currentDate->format('D'); // Day abbreviation
+
+                    $sale = $dailySales->firstWhere('date', $dateKey);
+                    $salesData['labels'][] = $formattedDate;
+                    $salesData['data'][] = $sale ? round($sale->total_sales, 2) : 0;
+
+                    $currentDate->addDay();
+                }
+                break;
+
+            case 'yearly':
+                // Get data for the last 6 years
+                $currentYear = $today->year;
+                $startYear = $currentYear - 5; // Start from 5 years ago
+
+                $yearlySales = Order::select(
+                    DB::raw('YEAR(created_at) as year'),
+                    DB::raw('SUM(total) as total_sales')
+                )
+                    ->whereYear('created_at', '>=', $startYear)
+                    ->whereYear('created_at', '<=', $currentYear)
+                    ->groupBy('year')
+                    ->orderBy('year')
+                    ->get();
+
+                // Create array with all years in range
+                for ($year = $startYear; $year <= $currentYear; $year++) {
+                    $sale = $yearlySales->firstWhere('year', $year);
+
+                    $salesData['labels'][] = (string)$year;
+                    $salesData['data'][] = $sale ? round($sale->total_sales, 2) : 0;
+                }
+                break;
+
+            default: // monthly
+                // Last 6 months
+                $startDate = $today->copy()->subMonths(5)->startOfMonth();
+                $endDate = $today->copy()->endOfMonth();
+
+                $monthlySales = Order::select(
+                    DB::raw('YEAR(created_at) as year'),
+                    DB::raw('MONTH(created_at) as month'),
+                    DB::raw('SUM(total) as total_sales')
+                )
+                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->groupBy('year', 'month')
+                    ->orderBy('year')
+                    ->orderBy('month')
+                    ->get();
+
+                // Create array with all 6 months
+                $currentDate = $startDate->copy();
+                while ($currentDate <= $endDate) {
+                    $year = $currentDate->format('Y');
+                    $month = $currentDate->format('n');
+                    $formattedMonth = $currentDate->format('M'); // Month abbreviation
+
+                    $sale = $monthlySales->first(function ($item) use ($year, $month) {
+                        return $item->year == $year && $item->month == $month;
+                    });
+
+                    $salesData['labels'][] = $formattedMonth;
+                    $salesData['data'][] = $sale ? round($sale->total_sales, 2) : 0;
+
+                    $currentDate->addMonth();
+                }
+                break;
+        }
+
+        return $salesData;
+    }
+
+    /**
+     * Get best selling products
+     *
+     * @return array
+     */
+    private function getBestSellingProducts()
+    {
+        // First get the bestselling product IDs
+        $bestSellingProducts = DB::table('order_items')
+            ->join('products', 'order_items.product_id', '=', 'products.id')
+            ->select(
+                'products.id',
+                'products.name',
+                'products.price',
+                DB::raw('SUM(order_items.quantity) as total_sales'),
+                DB::raw('SUM(order_items.total) as total_amount')
+            )
+            ->groupBy('products.id', 'products.name', 'products.price')
+            ->orderByDesc('total_sales')
+            ->limit(3)
+            ->get();
+
+        // Get the product IDs
+        $productIds = $bestSellingProducts->pluck('id')->toArray();
+
+        // Get the first image for each product
+        $productImages = DB::table('product_images')
+            ->whereIn('product_id', $productIds)
+            ->select('product_id', DB::raw('MIN(id) as first_image_id'))
+            ->groupBy('product_id')
+            ->get()
+            ->keyBy('product_id');
+
+        // Get the actual image paths
+        $imageDetails = DB::table('product_images')
+            ->whereIn('id', $productImages->pluck('first_image_id')->filter()->toArray())
+            ->select('id', 'product_id', 'path')
+            ->get()
+            ->keyBy('product_id');
+
+        return $bestSellingProducts->map(function ($product) use ($imageDetails) {
+            $imagePath = null;
+            if (isset($imageDetails[$product->id])) {
+                $imagePath = env('APP_ASSET_URL') . '/storage/' . $imageDetails[$product->id]->path;
+            }
+
+            return [
+                'product' => $product->name,
+                'image' => $imagePath,
+                'price' => 'LKR ' . number_format($product->price, 2),
+                'sales' => $product->total_sales,
+                'total' => 'LKR ' . number_format($product->total_amount, 2)
+            ];
+        });
+    }
+
+    /**
+     * Get 6 most recent orders
+     *
+     * @return array
+     */
+    private function getRecentOrders()
+    {
+        $recentOrders = Order::with(['orderItems.product', 'user'])
+            ->orderByDesc('created_at')
+            ->limit(6)
+            ->get();
+
+        return $recentOrders->map(function ($order) {
+            // Get the first product name from order items
+            $productName = $order->orderItems->isNotEmpty()
+                ? $order->orderItems->first()->product->name
+                : 'Unknown Product';
+
+            return [
+                'id' => '#' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
+                'product' => $productName,
+                'date' => $order->created_at->format('M jS, Y'),
+                'customer' => $order->first_name . ' ' . $order->last_name,
+                'status' => ucfirst($order->status),
+                'amount' => 'LKR ' . number_format($order->total, 2)
+            ];
+        });
+    }
 }
