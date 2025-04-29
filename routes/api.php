@@ -29,7 +29,6 @@ Route::prefix('v2')->group(function () {
 
     // 🔓 Public Routes
     Route::post('/products/featured', [ProductController::class, 'featured']);
-    Route::post('/products/add_new_product', [ProductController::class, 'store']);
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
     Route::get('/product/{product_id}', [ProductController::class, 'show']);
     Route::get('/contact/sendMessage', [ContactController::class, 'send']);
@@ -39,6 +38,7 @@ Route::prefix('v2')->group(function () {
     Route::middleware('auth:sanctum')->group(function () {
         
         Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
+        Route::post('/products/add_new_product', [ProductController::class, 'store']);
         
         // User routes
         Route::prefix('users')->group(function () {

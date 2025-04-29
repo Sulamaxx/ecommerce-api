@@ -110,7 +110,7 @@ class CartController extends Controller
                     'category' => $item->product->category,
                     'image' => $imagePath
                 ],
-                'total_price' => $item->quantity * ($item->product->price - $item->product->discount),
+                'total_price' => $item->quantity * ($item->product->price - ($item->product->price * $item->product->discount)/100),
             ];
         });
 

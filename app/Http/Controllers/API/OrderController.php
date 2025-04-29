@@ -74,12 +74,19 @@ class OrderController extends Controller
             $total = 0;
             $totalItemDiscount = 0;
             foreach ($cartItems as $item) {
-                $total += ($item->product->price - $item->product->discount) * $item->quantity;
-                $totalItemDiscount += $item->product->discount * $item->quantity;
-            }
+                $item_price = $item->product->price;
+                $discount_percentage = $item->product->discount;
+                $discount_amount = ($item_price * $discount_percentage) / 100;
+                $discounted_price = $item_price - $discount_amount;
 
-            // Apply discount and tax
-            $total = $total - $request->discount + $request->tax + $request->shipping_rate;
+                // Add to running totals
+                $total += $discounted_price * $item->quantity;
+                $totalItemDiscount += $discount_amount * $item->quantity;
+            }
+            
+            // Apply discount, tax and shipping
+            // $total = $total - $request->discount + $request->tax + $request->shipping_rate; //For Security purposes keep commented (No addtional discount for now from frontend)
+            $total = $total + $request->tax + $request->shipping_rate;
 
             // Create the order
             $order = Order::create([
@@ -88,7 +95,8 @@ class OrderController extends Controller
                 'payment_method' => $request->payment_method,
                 'status' => 'processing',
                 'total' => $total,
-                'discount' => $request->discount + $totalItemDiscount,
+                // 'discount' => $request->discount + $totalItemDiscount, //Not accept discount from front for now
+                'discount' => $totalItemDiscount,
                 'tax' => $request->tax,
                 'shipping_rate' => $request->shipping_rate,
                 'first_name' => $request->first_name,
@@ -110,8 +118,8 @@ class OrderController extends Controller
                     'order_id' => $order->id,
                     'product_id' => $item->product_id,
                     'quantity' => $item->quantity,
-                    'total' => $item->product->price * $item->quantity,
-                    'discount' => 0, // Apply individual item discounts if needed
+                    'total' => ($item->product->price - ($item->product->price * $item->product->discount / 100)) * $item->quantity,
+                    'discount' => ($item->product->price * $item->product->discount / 100) * $item->quantity,
                 ]);
 
                 // Deduct stock from product
