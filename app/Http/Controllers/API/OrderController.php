@@ -155,7 +155,7 @@ class OrderController extends Controller
         // Validate request data
         $validator = Validator::make($request->all(), [
             'payment_method' => 'sometimes|string',
-            'status' => 'sometimes|string|in:processing,shipped,delivered,cancelled',
+            'status' => 'sometimes|string|in:processing,shipped,delivered,canceled',
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             'country' => 'sometimes|string|max:255',
@@ -176,8 +176,8 @@ class OrderController extends Controller
         try {
             DB::beginTransaction();
 
-            // Handle cancellation - restore product stock if order is being cancelled
-            if ($request->has('status') && $request->status == 'cancelled' && $order->status != 'cancelled') {
+            // Handle cancellation - restore product stock if order is being canceled
+            if ($request->has('status') && $request->status == 'canceled' && $order->status != 'canceled') {
                 $orderItems = $order->orderItems;
                 foreach ($orderItems as $item) {
                     $product = Product::find($item->product_id);
@@ -617,7 +617,7 @@ class OrderController extends Controller
         $totalOrders = Order::count();
         $activeOrders = Order::whereIn('status', ['processing', 'shipped'])->count();
         $completedOrders = Order::where('status', 'delivered')->count();
-        $returnedOrders = Order::where('status', 'cancelled')->count();
+        $returnedOrders = Order::where('status', 'canceled')->count();
 
         // Get the minimum (first) and maximum (latest) order dates
         $firstOrderDate = Order::min('created_at');
