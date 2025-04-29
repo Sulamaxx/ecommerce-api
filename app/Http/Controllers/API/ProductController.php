@@ -480,4 +480,61 @@ public function getPaginatedProducts(Request $request)
     }
 }
 
+    /**
+     * Get featured products (top 3 selling products from each category).
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function featured()
+    {
+        try {
+            $categories = ['Hair', 'Beard', 'Accessories'];
+            $result = [];
+
+            foreach ($categories as $category) {
+                // Get top 3 products by sales count (initial_stock - stock) for each category
+                $products = Product::with('images')
+                    ->where('category', $category)
+                    ->where('stock', '>', 0) // Ensure products are in stock
+                    ->orderByRaw('(initial_stock - stock) DESC') // Order by sales count
+                    ->limit(3)
+                    ->get();
+
+                // Format products for this category
+                $formattedProducts = $products->map(function ($product) {
+                    // Calculate sales count
+                    $salesCount = $product->initial_stock - $product->stock;
+
+                    // Get the first image or null if no images
+                    $imagePath = $product->images->first()
+                        ? env('APP_ASSET_URL') . '/storage/' . $product->images->first()->path
+                        : null;
+
+                    return [
+                        'id' => $product->id,
+                        'name' => $product->name,
+                        'image' => $imagePath,
+                        'price' => (float) $product->price,
+                        'currency' => $product->currency,
+                        'rating' => $product->rating,
+                        'reviews' => $salesCount * 20, // Calculating reviews based on sales for demo
+                    ];
+                });
+
+                $result[$category] = $formattedProducts;
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $result
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve featured products',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
 }
