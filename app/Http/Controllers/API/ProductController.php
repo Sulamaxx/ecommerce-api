@@ -50,8 +50,6 @@ class ProductController extends Controller
 
             // Calculate the discount amount based on percentage
             $price = $request->price;
-            $discountPercentage = $request->discountPercentage;
-            $discount = ($price * $discountPercentage) / 100;
 
             // Create the product
             $product = new Product();
@@ -59,7 +57,7 @@ class ProductController extends Controller
             $product->description = $request->description;
             $product->category = $request->category;
             $product->price = $price;
-            $product->discount = $discount;
+            $product->discount = $request->discountPercentage;
             $product->initial_stock = $request->stockQuantity;
             $product->stock = $request->stockQuantity;
 
@@ -153,15 +151,13 @@ class ProductController extends Controller
 
             // Calculate the discount amount based on percentage
             $price = $request->price;
-            $discountPercentage = $request->discountPercentage;
-            $discount = ($price * $discountPercentage) / 100;
 
             // Update product details
             $product->name = $request->name;
             $product->description = $request->description;
             $product->category = $request->category;
             $product->price = $price;
-            $product->discount = $discount;
+            $product->discount = $request->discountPercentage;
             $product->stock = $request->stockQuantity;
 
             // Remove user guide if requested
