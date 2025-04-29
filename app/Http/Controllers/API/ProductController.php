@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Product;
 use App\Models\ProductImage;
+use Carbon\Carbon;
 
 class ProductController extends Controller
 {
@@ -315,6 +316,14 @@ class ProductController extends Controller
     {
         $product = Product::with('images')->findOrFail($id);
 
+
+        // Add isNew field
+        $product->isNew = $this->isProductNew(product: $product);
+
+        if($product->user_guide_pdf != null){
+            $product->user_guide_pdf = env('APP_ASSET_URL') . '/storage/' . $product->user_guide_pdf;
+        }
+
         // Add the prefix to each image path
         foreach ($product->images as $image) {
             $image->path = env('APP_ASSET_URL') . '/storage/' . $image->path;
@@ -377,7 +386,7 @@ class ProductController extends Controller
                     'description' => $product->description,
                     'image' => $imagePath,
                     'rating' => $product->rating,
-                    'isNew' => (bool) $product->is_new,
+                    'isNew' => (bool) $this->isProductNew(product: $product),
                     'discount' => $product->discount > 0 ? (float) $product->discount : null,
                     'category' => $product->category
                 ];
@@ -537,4 +546,16 @@ public function getPaginatedProducts(Request $request)
         }
     }
 
+
+    /**
+     * Check if a product is new (created within the last two months).
+     *
+     * @param  \App\Models\Product  $product
+     * @return bool
+     */
+    protected function isProductNew($product)
+    {
+        $twoMonthsAgo = Carbon::now()->subMonths(2);
+        return $product->created_at->greaterThanOrEqualTo($twoMonthsAgo);
+    }
 }
