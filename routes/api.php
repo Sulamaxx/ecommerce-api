@@ -39,6 +39,7 @@ Route::prefix('v2')->group(function () {
         
         Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
         Route::post('/products/add_new_product', [ProductController::class, 'store']);
+        Route::put('/products/{product_id}', [ProductController::class, 'update']);
         
         // User routes
         Route::prefix('users')->group(function () {
