@@ -4,15 +4,25 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Cart;
 use App\Models\Product;
+use App\Models\User;
+use App\Mail\OrderConfirmationMail;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 
 class OrderController extends Controller
 {
+    /**
+     * Save a new order from the user's cart
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
     /**
      * Save a new order from the user's cart
      *
@@ -133,6 +143,9 @@ class OrderController extends Controller
 
             DB::commit();
 
+            // Send order confirmation email
+            $this->sendOrderConfirmationEmail($order);
+
             return response()->json([
                 'message' => 'Order created successfully',
                 'order' => $order->load('orderItems')
@@ -141,6 +154,47 @@ class OrderController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Failed to create order', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Send order confirmation email to the customer
+     * 
+     * @param Order $order
+     * @return void
+     */
+    private function sendOrderConfirmationEmail(Order $order)
+    {
+        try {
+            // Refresh order with all necessary relationships for the email
+            $order = Order::with([
+                'orderItems.product', // Load order items with their products
+                'user'                // Load the user
+            ])->find($order->id);
+            
+            // Get user email from the user model
+            $user = User::find($order->user_id);
+            if (!$user) {
+                Log::error('Failed to send order confirmation email: User not found', [
+                    'order_id' => $order->id,
+                    'user_id' => $order->user_id
+                ]);
+                return;
+            }
+            
+            // Send the email
+            Mail::to($user->email)
+                ->send(new OrderConfirmationMail($order));
+                
+            Log::info('Order confirmation email sent successfully', [
+                'order_id' => $order->id,
+                'user_email' => $user->email
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send order confirmation email', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 
