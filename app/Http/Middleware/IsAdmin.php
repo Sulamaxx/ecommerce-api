@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-class CheckIfAdmin
+class IsAdmin
 {
     /**
      * Handle an incoming request.
@@ -15,12 +15,12 @@ class CheckIfAdmin
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $user = Auth::user();
-
-        if ($user && $user->user_type === 'admin') {
+        if ($request->user() && $request->user()->user_type === 'admin') {
             return $next($request);
         }
 
-        return response()->json(['message' => 'Permission Denied. Admins only.'], 403);
+        return response()->json([
+            'message' => 'Permission Denied. Admins only.'
+        ], 403);
     }
 }
