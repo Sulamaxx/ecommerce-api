@@ -19,6 +19,11 @@ class Kernel extends HttpKernel
       \Illuminate\Routing\Middleware\SubstituteBindings::class,
     ],
   ];
+  protected $routeMiddleware = [
+    // ...
+    'is_admin' => \App\Http\Middleware\CheckIfAdmin::class,
+  ];
+
 
 }
 ?>
