@@ -37,10 +37,6 @@ Route::prefix('v2')->group(function () {
     // 🔒 Protected Routes (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
         
-        Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
-        Route::post('/products/add_new_product', [ProductController::class, 'store']);
-        Route::put('/products/{product_id}', [ProductController::class, 'update']);
-        
         // User routes
         Route::prefix('users')->group(function () {
             Route::get('/', [UserController::class, 'index']);
@@ -75,5 +71,9 @@ Route::prefix('v2')->group(function () {
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
         
         Route::post('/admin/dashboard', [OrderController::class, 'getDashboardData']);
+
+        Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
+        Route::post('/products/add_new_product', [ProductController::class, 'store']);
+        Route::put('/products/{product_id}', [ProductController::class, 'update']);
     });
 });
