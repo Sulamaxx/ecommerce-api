@@ -17,6 +17,11 @@ Route::prefix('v2')->group(function () {
         return response()->json(['status' => 'api.php loaded']);
     });
 
+
+    Route::middleware('auth:sanctum')->group(function () {
+        Route::get('/logout', [App\Http\Controllers\Auth\AuthenticatedSessionController::class, 'destroy'])->name('logout');
+    });
+
     // 🛡️ Auth Routes
     Route::post('/register', [App\Http\Controllers\Auth\RegisteredUserController::class, 'store'])->name('register');
 
@@ -25,7 +30,9 @@ Route::prefix('v2')->group(function () {
     Route::post('/reset-password', [App\Http\Controllers\Auth\NewPasswordController::class, 'store'])->middleware('guest')->name('password.store');
     Route::get('/verify-email/{id}/{hash}', App\Http\Controllers\Auth\VerifyEmailController::class)->middleware(['auth', 'signed', 'throttle:6,1'])->name('verification.verify');
     Route::post('/email/verification-notification', [App\Http\Controllers\Auth\EmailVerificationNotificationController::class, 'store'])->middleware(['auth', 'throttle:6,1'])->name('verification.send');
-    Route::post('/logout', [App\Http\Controllers\Auth\AuthenticatedSessionController::class, 'destroy'])->middleware('auth')->name('logout');
+
+
+
 
     // 🔓 Public Routes
     Route::post('/products/featured', [ProductController::class, 'featured']);
@@ -69,7 +76,6 @@ Route::prefix('v2')->group(function () {
         // Admin/Advanced
         Route::get('/orders/all', [OrderController::class, 'getPaginatedOrderDetails']);
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
-        
         Route::post('/admin/dashboard', [OrderController::class, 'getDashboardData']);
 
         Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
