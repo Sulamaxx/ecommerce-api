@@ -48,6 +48,7 @@ class AuthenticatedSessionController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'mobile' => $user->mobile,
+                'user_type' => $user->user_type,
             ]
         ]);
     }

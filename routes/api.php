@@ -70,7 +70,7 @@ Route::prefix('v2')->group(function () {
 
     });
 
-    Route::middleware(['auth:sanctum', 'is_admin'])->group(function () {
+    Route::middleware(['auth:sanctum','is_admin'])->group(function () {
         // Admin/Advanced
         Route::get('/orders/all', [OrderController::class, 'getPaginatedOrderDetails']);
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);

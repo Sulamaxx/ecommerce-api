@@ -32,6 +32,7 @@ class User extends Authenticatable
         'state',
         'postal_code',
         'phone',
+        'user_type',
     ];
 
     /**

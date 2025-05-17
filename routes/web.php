@@ -6,6 +6,7 @@ Route::get('/', function () {
     return ['Laravel' => app()->version()];
 });
 
-Route::fallback(function () {
-    return response()->json(['message' => 'Route not found.'], 404);
-});
+// Route::fallback(function () {
+//     return response()->json(['message' => 'Route not found.'], 404);
+//     // return response()->json(['message' => 'Unauthorized'], 401);
+// });
