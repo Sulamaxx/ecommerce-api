@@ -42,7 +42,6 @@ Route::prefix('v2')->group(function () {
         // User routes
         Route::prefix('users')->group(function () {
             Route::get('/', [UserController::class, 'index']);
-            Route::get('/paginated', [UserController::class, 'getPaginatedUsers']);
             Route::post('/', [UserController::class, 'store']);
             Route::get('/{id}', [UserController::class, 'show']);
             Route::put('/', [UserController::class, 'update']);
@@ -70,11 +69,13 @@ Route::prefix('v2')->group(function () {
 
     });
 
-    Route::middleware(['auth:sanctum','is_admin'])->group(function () {
+    Route::middleware(['auth:sanctum', 'is_admin'])->group(function () {
         // Admin/Advanced
         Route::get('/orders/all', [OrderController::class, 'getPaginatedOrderDetails']);
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
         Route::post('/admin/dashboard', [OrderController::class, 'getDashboardData']);
+
+        Route::get('/users/paginated', [UserController::class, 'getPaginatedUsers']);
 
         Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
         Route::post('/products/add_new_product', [ProductController::class, 'store']);
