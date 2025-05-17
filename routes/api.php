@@ -75,7 +75,7 @@ Route::prefix('v2')->group(function () {
         Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
         Route::post('/admin/dashboard', [OrderController::class, 'getDashboardData']);
 
-        Route::get('/users/paginated', [UserController::class, 'getPaginatedUsers']);
+        Route::get('/admin/users/paginated/', [UserController::class, 'getPaginatedUsers']);
 
         Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
         Route::post('/products/add_new_product', [ProductController::class, 'store']);
