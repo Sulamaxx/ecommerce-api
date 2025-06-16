@@ -210,8 +210,8 @@ class OrderController extends Controller
         $order = Order::findOrFail($id);
 
         // Check if user owns this order
-        if (auth()->id() !== $order->user_id) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if (auth()->id() !== $order->user_id && auth()->user()->user_type !== 'admin' && auth()->user()->user_type !== 'staff') {
+            return response()->json(['message' => 'Unathorized  Access! Order Owner, Admin or Staff only can update the order.'], 403);
         }
 
         // Validate request data
