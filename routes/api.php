@@ -75,14 +75,13 @@ Route::prefix('v2')->group(function () {
 
     Route::middleware(['auth:sanctum', 'is_admin'])->group(function () {
         // Admin/Advanced
-        Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
         Route::post('/admin/dashboard', [OrderController::class, 'getDashboardData']);
-
+        
         Route::get('/admin/users/paginated/', [UserController::class, 'getPaginatedUsers']);
         Route::get('/admin/staff/paginated/', [StaffController::class, 'getPaginatedStaff']);
         Route::post('/staff', [StaffController::class, 'store']);
         Route::put('/staff/{id}', [StaffController::class, 'update']);
-
+        
         Route::post('/products/add_new_product', [ProductController::class, 'store']);
         Route::put('/products/{product_id}', [ProductController::class, 'update']);
     });
@@ -90,5 +89,6 @@ Route::prefix('v2')->group(function () {
     Route::middleware(['auth:sanctum', 'is_admin_or_staff'])->group(function () {
         Route::post('/admin/all_products', [ProductController::class, 'getPaginatedProducts']);
         Route::get('/orders/all', [OrderController::class, 'getPaginatedOrderDetails']);
+        Route::get('/orders/history', [OrderController::class, 'getAllOrderHistory']);
     });
 });

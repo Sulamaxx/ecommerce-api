@@ -134,7 +134,7 @@ class StaffController extends Controller
             $staff = new User();
             $staff->first_name = $request->firstName;
             $staff->last_name = $request->lastName;
-            $staff->name = $request->first_name . ' ' . $request->last_name; // Set name as full name
+            $staff->name = $request->first_name;
             $staff->email = $request->email;
             $staff->password = Hash::make($request->password);
             $staff->mobile = $request->mobile;
@@ -222,6 +222,7 @@ class StaffController extends Controller
             // Update staff fields if they are provided
             if ($request->has('firstName')) $staff->first_name = $request->firstName;
             if ($request->has('lastName')) $staff->last_name = $request->lastName;
+            if ($request->has('firstName'))  $staff->name = $request->firstName;
             if ($request->has('email')) $staff->email = $request->email;
             if ($request->has('password')) {
                 if(trim($request->password) !== '') {
