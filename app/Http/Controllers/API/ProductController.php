@@ -493,7 +493,7 @@ public function getPaginatedProducts(Request $request)
     public function featured()
     {
         try {
-            $categories = ['Hair', 'Beard', 'Accessories'];
+            $categories = ['Hair', 'Beard', 'Accessories', 'Apparel'];
             $result = [];
 
             foreach ($categories as $category) {
