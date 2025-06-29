@@ -38,7 +38,7 @@ Route::prefix('v2')->group(function () {
     Route::post('/products/featured', [ProductController::class, 'featured']);
     Route::post('/products/filtered_products', [ProductController::class, 'getFilteredProducts']);
     Route::get('/product/{product_id}', [ProductController::class, 'show']);
-    Route::get('/contact/sendMessage', [ContactController::class, 'send']);
+    Route::post('/contact/sendMessage', [ContactController::class, 'send']);
 
 
     // 🔒 Protected Routes (Requires Sanctum Token)
