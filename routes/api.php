@@ -50,6 +50,9 @@ Route::prefix('v2')->group(function () {
             Route::get('/{id}', [UserController::class, 'show']);
             Route::put('/', [UserController::class, 'update']);
             Route::delete('/{id}', [UserController::class, 'destroy']);
+            Route::post('/images/upload', [UserController::class, 'updateImage']);
+            Route::post('/change-password', [UserController::class, 'changePassword']);
+
         });
 
         // User Info
