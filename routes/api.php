@@ -9,7 +9,8 @@ use App\Http\Controllers\API\{
     OrderController,
     ContactController,
     StaffController,
-    UserController
+    UserController,
+    WishlistController
 };
 
 Route::prefix('v2')->group(function () {
@@ -73,6 +74,11 @@ Route::prefix('v2')->group(function () {
         Route::post('/checkout', [OrderController::class, 'saveOrder']);
         // Route::post('/checkout/details', [OrderController::class, 'saveDetails']);
         // Route::post('/checkout/payment', [OrderController::class, 'makePayment']);
+
+
+        Route::get('/wishlist', [WishlistController::class, 'index']); 
+        Route::post('/wishlist', [WishlistController::class, 'store']); 
+        Route::delete('/wishlist/{product_id}', [WishlistController::class, 'destroy']);
 
     });
 
