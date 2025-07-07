@@ -41,7 +41,6 @@ Route::prefix('v2')->group(function () {
     Route::get('/product/{product_id}', [ProductController::class, 'show']);
     Route::post('/contact/sendMessage', [ContactController::class, 'send']);
 
-
     // 🔒 Protected Routes (Requires Sanctum Token)
     Route::middleware('auth:sanctum')->group(function () {
         // User routes
@@ -53,7 +52,6 @@ Route::prefix('v2')->group(function () {
             Route::delete('/{id}', [UserController::class, 'destroy']);
             Route::post('/images/upload', [UserController::class, 'updateImage']);
             Route::post('/change-password', [UserController::class, 'changePassword']);
-
         });
 
         // User Info
@@ -61,6 +59,7 @@ Route::prefix('v2')->group(function () {
             return $request->user();
         });
 
+        Route::get('/user/orders', [OrderController::class, 'getUserOrdersByStatus']);
         Route::put('/order/{id}', [OrderController::class, 'updateOrder']);
 
         // Cart

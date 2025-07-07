@@ -881,4 +881,105 @@ class OrderController extends Controller
             ];
         });
     }
+
+    /**
+ * Get current user's orders filtered by status (pending/complete)
+ *
+ * @param Request $request
+ * @return \Illuminate\Http\JsonResponse
+ */
+public function getUserOrdersByStatus(Request $request)
+{
+    try {
+        $userId = auth()->id();
+        $statusFilter = $request->input('status', 'pending');
+        
+        // Validate status parameter
+        if (!in_array($statusFilter, ['pending', 'complete'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid status. Must be either "pending" or "complete".'
+            ], 400);
+        }
+        
+        // Define status mapping
+        $statusMapping = [
+            'pending' => ['processing', 'shipped'],
+            'complete' => ['delivered']
+        ];
+        
+        $orderStatuses = $statusMapping[$statusFilter];
+        
+        // Get orders with order items and product details
+        $orders = Order::with([
+            'orderItems.product.images' => function($query) {
+                $query->orderBy('id', 'asc')->limit(1); // Get first image only
+            }
+        ])
+        ->where('user_id', $userId)
+        ->whereIn('status', $orderStatuses)
+        ->orderBy('created_at', 'desc')
+        ->get();
+        
+        // Format the data for frontend
+        $formattedData = [];
+        
+        foreach ($orders as $order) {
+            foreach ($order->orderItems as $orderItem) {
+                $product = $orderItem->product;
+                
+                // Get product image URL
+                $productImageUrl = null;
+                if ($product && $product->images->isNotEmpty()) {
+                    $imagePath = $product->images->first()->path;
+                    $productImageUrl = env('APP_ASSET_URL', config('app.url')) . '/storage/' . $imagePath;
+                }
+                
+                // Calculate individual item price (after discount)
+                $originalPrice = $product ? $product->price : 0;
+                $discountPercentage = $product ? $product->discount : 0;
+                $discountAmount = ($originalPrice * $discountPercentage) / 100;
+                $itemPrice = $originalPrice - $discountAmount;
+                
+                $formattedData[] = [
+                    'order_id' => $order->id,
+                    'order_number' => '#' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
+                    'status' => $order->status,
+                    'created_at' => $order->created_at->format('M d, Y'),
+                    'item' => [
+                        'id' => $orderItem->id,
+                        'product_id' => $orderItem->product_id,
+                        'product_name' => $product ? $product->name : 'Unknown Product',
+                        'product_image' => $productImageUrl,
+                        'quantity' => $orderItem->quantity,
+                        'price' => round($itemPrice, 0), // Individual item price after discount
+                        'subtotal' => round($orderItem->total, 0), // Total for this item (quantity * discounted price)
+                        'original_price' => round($originalPrice, 0),
+                        'discount_percentage' => $discountPercentage
+                    ]
+                ];
+            }
+        }
+        
+        return response()->json([
+            'status' => 'success',
+            'data' => $formattedData,
+            'filter' => $statusFilter,
+            'total_items' => count($formattedData)
+        ], 200);
+        
+    } catch (\Exception $e) {
+        Log::error('Error fetching user orders by status', [
+            'user_id' => auth()->id(),
+            'status_filter' => $request->input('status'),
+            'error' => $e->getMessage()
+        ]);
+        
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Failed to retrieve orders',
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
 }
