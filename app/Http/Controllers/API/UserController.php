@@ -359,32 +359,64 @@ class UserController extends Controller
 
     public function updateImage(Request $request)
     {
-        $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpgmgif,svg|max:2048',
-        ]);
-
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-
-            $filename = time() . '_' . Str::random(10) . '.' . $image->getClientOriginalExtension();
-
-            $path = $image->storeAs('public/uploads/images', $filename);
-
-            $url = Storage::url($path);
-
+        try {
+            // Validate the uploaded image
+            $request->validate([
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            ]);
+    
+            if ($request->hasFile('image')) {
+                $user = User::findOrFail(auth()->id());
+                $image = $request->file('image');
+    
+                // Store the image in profile_pictures directory using public disk
+                $imagePath = $image->store('profile_pictures', 'public');
+    
+                // Delete old profile picture if it exists and is not the default
+                if ($user->profile_picture && $user->profile_picture !== 'default_avatar.png') {
+                    $oldImagePath = $user->profile_picture;
+                    if (Storage::disk('public')->exists($oldImagePath)) {
+                        Storage::disk('public')->delete($oldImagePath);
+                    }
+                }
+    
+                // Update user's profile_picture column with the full path
+                $user->profile_picture = $imagePath;
+                $user->save();
+    
+                // Get the public URL
+                $url = Storage::disk('public')->url($imagePath);
+    
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Profile image uploaded successfully!',
+                    'data' => [
+                        'filename' => basename($imagePath),
+                        'path' => $imagePath,
+                        'url' => asset($url),
+                        'user' => $user
+                    ]
+                ], 200);
+            }
+    
             return response()->json([
-                'message' => 'Image uploaded successfully!',
-                'filename' => $filename,
-                'path' => $path,
-                'url' => asset($url)
-            ], 201);
-
+                'status' => 'error',
+                'message' => 'No image file provided.'
+            ], 400);
+    
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to upload image',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'No image file provided.'
-        ], 400); // Bad Request
-
     }
 
 
