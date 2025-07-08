@@ -33,6 +33,7 @@ class AuthController extends Controller
                 'email' => $user->email,
                 'mobile' => $user->mobile,
                 'user_type' => $user->user_type,
+                'profile_picture' => $user->profile_picture
             ]
         ]);
     }
