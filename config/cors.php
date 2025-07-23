@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => [env('FRONTEND_URL', 'http://localhost:5173')],
+    'allowed_origins' => [env('FRONTEND_URL', 'http://ec2-13-212-24-240.ap-southeast-1.compute.amazonaws.com:5173')],
 
     'allowed_origins_patterns' => [],
 
