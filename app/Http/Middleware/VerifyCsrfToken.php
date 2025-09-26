@@ -9,7 +9,7 @@ use Symfony\Component\HttpFoundation\Response;
 class VerifyCsrfToken
 {
     protected $except = [
-        'api/*', // This ensures API routes are excluded from CSRF validation
+        '/api/v2/payhere/notify',
     ];
 
     /**

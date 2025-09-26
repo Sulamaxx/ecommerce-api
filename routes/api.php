@@ -71,15 +71,15 @@ Route::prefix('v2')->group(function () {
 
         // Checkout
         Route::post('/checkout', [OrderController::class, 'saveOrder']);
-        // Route::post('/checkout/details', [OrderController::class, 'saveDetails']);
-        // Route::post('/checkout/payment', [OrderController::class, 'makePayment']);
-
-
-        Route::get('/wishlist', [WishlistController::class, 'index']); 
-        Route::post('/wishlist', [WishlistController::class, 'store']); 
+        Route::post('/payhere/checkout', [OrderController::class, 'payhereCheckout']);
+        
         Route::delete('/wishlist/{product_id}', [WishlistController::class, 'destroy']);
 
     });
+
+    // 📢 Public PayHere Routes (for notifications and returns)
+    Route::post('/payhere/notify', [OrderController::class, 'payhereNotify']);
+    Route::get('/payhere/return', [OrderController::class, 'payhereReturn'])->name('payhere.return');
 
     Route::middleware(['auth:sanctum', 'is_admin'])->group(function () {
         // Admin/Advanced

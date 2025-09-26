@@ -14,9 +14,148 @@ use App\Mail\OrderConfirmationMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Http;
 
 class OrderController extends Controller
 {
+    public function payhereCheckout(Request $request)
+    {
+        // Validate request data
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'country' => 'required|string|max:255',
+            'company' => 'nullable|string|max:255',
+            'shipping_address' => 'required|string|max:255',
+            'address' => 'required|string|max:255',
+            'apartment' => 'nullable|string|max:255',
+            'city' => 'required|string|max:255',
+            'state' => 'nullable|string|max:255',
+            'postal_code' => 'required|string|max:20',
+            'phone' => 'required|string|max:20',
+            'shipping_rate' => 'required|numeric',
+            'tax' => 'required|numeric',
+            'discount' => 'required|numeric',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        // Get user cart items
+        $userId = auth()->id();
+        $cartItems = Cart::where('user_id', $userId)
+            ->with('product')
+            ->get();
+
+        if ($cartItems->isEmpty()) {
+            return response()->json(['message' => 'Your cart is empty'], 400);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Check product stock before proceeding
+            foreach ($cartItems as $item) {
+                if ($item->product->stock < $item->quantity) {
+                    DB::rollBack();
+                    return response()->json([
+                        'message' => 'Insufficient stock for product: ' . $item->product->name,
+                        'product_id' => $item->product_id,
+                        'requested' => $item->quantity,
+                        'available' => $item->product->stock
+                    ], 400);
+                }
+            }
+
+            // Calculate order total
+            $total = 0;
+            $totalItemDiscount = 0;
+            foreach ($cartItems as $item) {
+                $item_price = $item->product->price;
+                $discount_percentage = $item->product->discount;
+                $discount_amount = ($item_price * $discount_percentage) / 100;
+                $discounted_price = $item_price - $discount_amount;
+
+                // Add to running totals
+                $total += $discounted_price * $item->quantity;
+                $totalItemDiscount += $discount_amount * $item->quantity;
+            }
+
+            $total = $total + $request->tax + $request->shipping_rate;
+
+            // Create the order
+            $order = Order::create([
+                'user_id' => $userId,
+                'shipping_address' => $request->shipping_address,
+                'payment_method' => 'PayHere',
+                'status' => 'pending',
+                'total' => $total,
+                'discount' => $totalItemDiscount,
+                'tax' => $request->tax,
+                'shipping_rate' => $request->shipping_rate,
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'country' => $request->country,
+                'company' => $request->company,
+                'address' => $request->address,
+                'apartment' => $request->apartment,
+                'city' => $request->city,
+                'state' => $request->state,
+                'postal_code' => $request->postal_code,
+                'phone' => $request->phone
+            ]);
+
+            // Add items to order_items
+            foreach ($cartItems as $item) {
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $item->product_id,
+                    'quantity' => $item->quantity,
+                    'total' => ($item->product->price - ($item->product->price * $item->product->discount / 100)) * $item->quantity,
+                    'discount' => ($item->product->price * $item->product->discount / 100) * $item->quantity,
+                ]);
+            }
+
+            DB::commit();
+
+            $user = auth()->user();
+
+            $payhere_data = [
+                "sandbox" => config('payhere.mode') === 'sandbox',
+                "merchant_id" => config('payhere.merchant_id'),
+                "return_url" => route('payhere.return'),
+                "cancel_url" => config('app.frontend_url', url('/')),
+                "notify_url" => url('/api/v2/payhere/notify'),
+                "order_id" => $order->id,
+                "items" => "Order " . $order->id,
+                "amount" => $order->total,
+                "currency" => "LKR",
+                "first_name" => $order->first_name,
+                "last_name" => $order->last_name,
+                "email" => $user->email,
+                "phone" => $order->phone,
+                "address" => $order->address,
+                "city" => $order->city,
+                "country" => $order->country,
+            ];
+
+            // --- Temporary Debug Logging ---
+            Log::info('PayHere Checkout Request Data:', $payhere_data);
+            // --------------------------
+
+            return response()->json([
+                'message' => 'Order created, proceed to payment.',
+                'order' => $order->load('orderItems'),
+                'payhere' => $payhere_data
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to create order', 'error' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * Save a new order from the user's cart
      *
@@ -93,7 +232,7 @@ class OrderController extends Controller
                 $total += $discounted_price * $item->quantity;
                 $totalItemDiscount += $discount_amount * $item->quantity;
             }
-            
+
             // Apply discount, tax and shipping
             // $total = $total - $request->discount + $request->tax + $request->shipping_rate; //For Security purposes keep commented (No addtional discount for now from frontend)
             $total = $total + $request->tax + $request->shipping_rate;
@@ -171,7 +310,7 @@ class OrderController extends Controller
                 'orderItems.product', // Load order items with their products
                 'user'                // Load the user
             ])->find($order->id);
-            
+
             // Get user email from the user model
             $user = User::find($order->user_id);
             if (!$user) {
@@ -181,11 +320,11 @@ class OrderController extends Controller
                 ]);
                 return;
             }
-            
+
             // Send the email
             Mail::to($user->email)
                 ->send(new OrderConfirmationMail($order));
-                
+
             Log::info('Order confirmation email sent successfully', [
                 'order_id' => $order->id,
                 'user_email' => $user->email
@@ -289,7 +428,7 @@ class OrderController extends Controller
             }
 
             $order->save();
-            
+
             DB::commit();
 
             return response()->json([
@@ -303,7 +442,7 @@ class OrderController extends Controller
         }
     }
 
-     /**
+    /**
      * Get paginated order history for the authenticated user
      *
      * @param Request $request
@@ -316,40 +455,40 @@ class OrderController extends Controller
             $page = $request->input('page', 1);
             // Fixed items per page to 10
             $perPage = 10;
-            
+
             // Start with a base query for the current user's orders
             $userId = auth()->id();
             $query = Order::where('user_id', $userId);
-            
+
             // Apply search filter if provided
             if ($request->has('search') && !empty($request->search)) {
                 $searchTerm = $request->search;
-                $query->where(function($q) use ($searchTerm) {
+                $query->where(function ($q) use ($searchTerm) {
                     $q->where('id', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('status', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('first_name', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('postal_code', 'LIKE', "%{$searchTerm}%");
+                        ->orWhere('status', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('first_name', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('postal_code', 'LIKE', "%{$searchTerm}%");
                 });
             }
-            
+
             // Apply status filter if provided
             if ($request->has('status') && !empty($request->status)) {
                 $query->where('status', $request->status);
             }
-            
+
             // Sort by created_at in descending order (latest first)
             $query->orderBy('created_at', 'desc');
-            
+
             // Get the total count for pagination
             $totalOrders = $query->count();
             $totalPages = ceil($totalOrders / $perPage);
-            
+
             // Get orders for current page
             $orders = $query->skip(($page - 1) * $perPage)
-                            ->take($perPage)
-                            ->get();
-            
+                ->take($perPage)
+                ->get();
+
             // Format the orders for the frontend
             $formattedOrders = $orders->map(function ($order) {
                 return [
@@ -359,20 +498,20 @@ class OrderController extends Controller
                     'status' => ucfirst($order->status)
                 ];
             });
-            
+
             return response()->json([
                 'status' => 'success',
                 'data' => [
                     'orders' => $formattedOrders,
                     'pagination' => [
-                        'currentPage' => (int)$page,
+                        'currentPage' => (int) $page,
                         'totalPages' => $totalPages,
                         'perPage' => $perPage,
                         'totalOrders' => $totalOrders
                     ]
                 ]
             ], 200);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -382,7 +521,7 @@ class OrderController extends Controller
         }
     }
 
-         /**
+    /**
      * Get paginated order history for the authenticated user
      *
      * @param Request $request
@@ -395,21 +534,21 @@ class OrderController extends Controller
             $page = $request->input('page', 1);
             // Fixed items per page to 10
             $perPage = 10;
- 
-            $query = Order::query();            
-            
+
+            $query = Order::query();
+
             // Sort by created_at in descending order (latest first)
             $query->orderBy('created_at', 'desc');
-            
+
             // Get the total count for pagination
             $totalOrders = $query->count();
             $totalPages = ceil($totalOrders / $perPage);
-            
+
             // Get orders for current page
             $orders = $query->skip(($page - 1) * $perPage)
-                            ->take($perPage)
-                            ->get();
-            
+                ->take($perPage)
+                ->get();
+
             // Format the orders for the frontend
             $formattedOrders = $orders->map(function ($order) {
                 return [
@@ -419,20 +558,20 @@ class OrderController extends Controller
                     'status' => ucfirst($order->status)
                 ];
             });
-            
+
             return response()->json([
                 'status' => 'success',
                 'data' => [
                     'orders' => $formattedOrders,
                     'pagination' => [
-                        'currentPage' => (int)$page,
+                        'currentPage' => (int) $page,
                         'totalPages' => $totalPages,
                         'perPage' => $perPage,
                         'totalOrders' => $totalOrders
                     ]
                 ]
             ], 200);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -442,7 +581,7 @@ class OrderController extends Controller
         }
     }
 
-     /**
+    /**
      * Get paginated detailed orders
      *
      * @param Request $request
@@ -455,58 +594,58 @@ class OrderController extends Controller
             $page = $request->input('page', 1);
             // Fixed items per page
             $perPage = 5;
-            
+
             // Start with a base query - admins see all orders, users see only their own
             $query = Order::with(['orderItems.product', 'user']);
-            
+
             // if (!auth()->user()->isAdmin()) {
             //     $query->where('user_id', auth()->id());
             // }
-            
+
             // Apply search filter if provided
             if ($request->has('search') && !empty($request->search)) {
                 $searchTerm = $request->search;
-                $query->where(function($q) use ($searchTerm) {
+                $query->where(function ($q) use ($searchTerm) {
                     $q->where('id', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('status', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('first_name', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('phone', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('city', 'LIKE', "%{$searchTerm}%")
-                      ->orWhere('country', 'LIKE', "%{$searchTerm}%");
+                        ->orWhere('status', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('first_name', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('phone', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('city', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('country', 'LIKE', "%{$searchTerm}%");
                 });
             }
-            
+
             // Apply status filter if provided
             if ($request->has('status') && !empty($request->status)) {
                 $query->where('status', $request->status);
             }
-            
+
             // Apply date range filter if provided
             if ($request->has('date_from') && !empty($request->date_from)) {
                 $query->whereDate('created_at', '>=', $request->date_from);
             }
-            
+
             if ($request->has('date_to') && !empty($request->date_to)) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-            
+
             // Sort by created_at in descending order (latest first)
             $query->orderBy('created_at', 'desc');
-            
+
             // Get the total count for pagination
             $totalOrders = $query->count();
             $totalPages = ceil($totalOrders / $perPage);
-            
+
             // Get orders for current page
             $orders = $query->skip(($page - 1) * $perPage)
-                            ->take($perPage)
-                            ->get();
-            
+                ->take($perPage)
+                ->get();
+
             // Format the orders with detailed information
             $formattedOrders = $orders->map(function ($order) {
                 return [
-                    'id' => (string)$order->id,
+                    'id' => (string) $order->id,
                     'date' => $order->created_at->format('M d, Y'),
                     'status' => $order->status,
                     'customer' => [
@@ -529,7 +668,7 @@ class OrderController extends Controller
                         'businessName' => $order->company ?: ($order->first_name . ' ' . $order->last_name),
                         'phone' => $order->phone
                     ],
-                    'products' => $order->orderItems->map(function($item) use ($order) {
+                    'products' => $order->orderItems->map(function ($item) use ($order) {
                         return [
                             'name' => $item->product->name,
                             'orderId' => '#' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
@@ -546,20 +685,20 @@ class OrderController extends Controller
                     ]
                 ];
             });
-            
+
             return response()->json([
                 'status' => 'success',
                 'data' => [
                     'orders' => $formattedOrders,
                     'pagination' => [
-                        'currentPage' => (int)$page,
+                        'currentPage' => (int) $page,
                         'totalPages' => $totalPages,
                         'perPage' => $perPage,
                         'totalOrders' => $totalOrders
                     ]
                 ]
             ], 200);
-            
+
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -569,7 +708,7 @@ class OrderController extends Controller
         }
     }
 
-        /**
+    /**
      * Helper method to format full address
      *
      * @param Order $order
@@ -578,34 +717,34 @@ class OrderController extends Controller
     private function formatFullAddress(Order $order)
     {
         $addressParts = [];
-        
+
         if ($order->address) {
             $addressParts[] = $order->address;
         }
-        
+
         if ($order->apartment) {
             $addressParts[] = $order->apartment;
         }
-        
+
         if ($order->city) {
             $addressParts[] = $order->city;
         }
-        
+
         if ($order->state) {
             $addressParts[] = $order->state;
         }
-        
+
         if ($order->country) {
             $addressParts[] = $order->country;
         }
-        
+
         if ($order->postal_code) {
             $addressParts[] = $order->postal_code;
         }
-        
+
         return implode(', ', $addressParts);
     }
-    
+
     /**
      * Helper method to determine card type
      *
@@ -623,7 +762,7 @@ class OrderController extends Controller
         } elseif (stripos($paymentMethod, 'amex') !== false || stripos($paymentMethod, 'american express') !== false) {
             return 'American Express';
         }
-        
+
         return 'Credit Card'; // Default
     }
 
@@ -754,7 +893,7 @@ class OrderController extends Controller
                 for ($year = $startYear; $year <= $currentYear; $year++) {
                     $sale = $yearlySales->firstWhere('year', $year);
 
-                    $salesData['labels'][] = (string)$year;
+                    $salesData['labels'][] = (string) $year;
                     $salesData['data'][] = $sale ? round($sale->total_sales, 2) : 0;
                 }
                 break;
@@ -883,103 +1022,158 @@ class OrderController extends Controller
     }
 
     /**
- * Get current user's orders filtered by status (pending/complete)
- *
- * @param Request $request
- * @return \Illuminate\Http\JsonResponse
- */
-public function getUserOrdersByStatus(Request $request)
-{
-    try {
-        $userId = auth()->id();
-        $statusFilter = $request->input('status', 'pending');
-        
-        // Validate status parameter
-        if (!in_array($statusFilter, ['pending', 'complete'])) {
+     * Get current user's orders filtered by status (pending/complete)
+     *
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getUserOrdersByStatus(Request $request)
+    {
+        try {
+            $userId = auth()->id();
+            $statusFilter = $request->input('status', 'pending');
+
+            // Validate status parameter
+            if (!in_array($statusFilter, ['pending', 'complete'])) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Invalid status. Must be either "pending" or "complete".'
+                ], 400);
+            }
+
+            // Define status mapping
+            $statusMapping = [
+                'pending' => ['processing', 'shipped'],
+                'complete' => ['delivered']
+            ];
+
+            $orderStatuses = $statusMapping[$statusFilter];
+
+            // Get orders with order items and product details
+            $orders = Order::with([
+                'orderItems.product.images' => function ($query) {
+                    $query->orderBy('id', 'asc')->limit(1); // Get first image only
+                }
+            ])
+                ->where('user_id', $userId)
+                ->whereIn('status', $orderStatuses)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            // Format the data for frontend
+            $formattedData = [];
+
+            foreach ($orders as $order) {
+                foreach ($order->orderItems as $orderItem) {
+                    $product = $orderItem->product;
+
+                    // Get product image URL
+                    $productImageUrl = null;
+                    if ($product && $product->images->isNotEmpty()) {
+                        $imagePath = $product->images->first()->path;
+                        $productImageUrl = env('APP_ASSET_URL', config('app.url')) . '/storage/' . $imagePath;
+                    }
+
+                    // Calculate individual item price (after discount)
+                    $originalPrice = $product ? $product->price : 0;
+                    $discountPercentage = $product ? $product->discount : 0;
+                    $discountAmount = ($originalPrice * $discountPercentage) / 100;
+                    $itemPrice = $originalPrice - $discountAmount;
+
+                    $formattedData[] = [
+                        'order_id' => $order->id,
+                        'order_number' => '#' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
+                        'status' => $order->status,
+                        'created_at' => $order->created_at->format('M d, Y'),
+                        'item' => [
+                            'id' => $orderItem->id,
+                            'product_id' => $orderItem->product_id,
+                            'product_name' => $product ? $product->name : 'Unknown Product',
+                            'product_image' => $productImageUrl,
+                            'quantity' => $orderItem->quantity,
+                            'price' => round($itemPrice, 0), // Individual item price after discount
+                            'subtotal' => round($orderItem->total, 0), // Total for this item (quantity * discounted price)
+                            'original_price' => round($originalPrice, 0),
+                            'discount_percentage' => $discountPercentage
+                        ]
+                    ];
+                }
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $formattedData,
+                'filter' => $statusFilter,
+                'total_items' => count($formattedData)
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Error fetching user orders by status', [
+                'user_id' => auth()->id(),
+                'status_filter' => $request->input('status'),
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'status' => 'error',
-                'message' => 'Invalid status. Must be either "pending" or "complete".'
-            ], 400);
+                'message' => 'Failed to retrieve orders',
+                'error' => $e->getMessage()
+            ], 500);
         }
-        
-        // Define status mapping
-        $statusMapping = [
-            'pending' => ['processing', 'shipped'],
-            'complete' => ['delivered']
-        ];
-        
-        $orderStatuses = $statusMapping[$statusFilter];
-        
-        // Get orders with order items and product details
-        $orders = Order::with([
-            'orderItems.product.images' => function($query) {
-                $query->orderBy('id', 'asc')->limit(1); // Get first image only
-            }
-        ])
-        ->where('user_id', $userId)
-        ->whereIn('status', $orderStatuses)
-        ->orderBy('created_at', 'desc')
-        ->get();
-        
-        // Format the data for frontend
-        $formattedData = [];
-        
-        foreach ($orders as $order) {
-            foreach ($order->orderItems as $orderItem) {
-                $product = $orderItem->product;
-                
-                // Get product image URL
-                $productImageUrl = null;
-                if ($product && $product->images->isNotEmpty()) {
-                    $imagePath = $product->images->first()->path;
-                    $productImageUrl = env('APP_ASSET_URL', config('app.url')) . '/storage/' . $imagePath;
-                }
-                
-                // Calculate individual item price (after discount)
-                $originalPrice = $product ? $product->price : 0;
-                $discountPercentage = $product ? $product->discount : 0;
-                $discountAmount = ($originalPrice * $discountPercentage) / 100;
-                $itemPrice = $originalPrice - $discountAmount;
-                
-                $formattedData[] = [
-                    'order_id' => $order->id,
-                    'order_number' => '#' . str_pad($order->id, 5, '0', STR_PAD_LEFT),
-                    'status' => $order->status,
-                    'created_at' => $order->created_at->format('M d, Y'),
-                    'item' => [
-                        'id' => $orderItem->id,
-                        'product_id' => $orderItem->product_id,
-                        'product_name' => $product ? $product->name : 'Unknown Product',
-                        'product_image' => $productImageUrl,
-                        'quantity' => $orderItem->quantity,
-                        'price' => round($itemPrice, 0), // Individual item price after discount
-                        'subtotal' => round($orderItem->total, 0), // Total for this item (quantity * discounted price)
-                        'original_price' => round($originalPrice, 0),
-                        'discount_percentage' => $discountPercentage
-                    ]
-                ];
-            }
-        }
-        
-        return response()->json([
-            'status' => 'success',
-            'data' => $formattedData,
-            'filter' => $statusFilter,
-            'total_items' => count($formattedData)
-        ], 200);
-        
-    } catch (\Exception $e) {
-        Log::error('Error fetching user orders by status', [
-            'user_id' => auth()->id(),
-            'status_filter' => $request->input('status'),
-            'error' => $e->getMessage()
-        ]);
-        
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Failed to retrieve orders',
-            'error' => $e->getMessage()
-        ], 500);
     }
-}
+
+    public function payhereNotify(Request $request)
+    {
+        $merchant_id = $request->input('merchant_id');
+        $order_id = $request->input('order_id');
+        $payhere_amount = $request->input('payhere_amount');
+        $payhere_currency = $request->input('payhere_currency');
+        $status_code = $request->input('status_code');
+        $md5sig = $request->input('md5sig');
+
+        $merchant_secret = config('payhere.merchant_secret');
+
+        $local_md5sig = strtoupper(
+            md5(
+                $merchant_id .
+                $order_id .
+                $payhere_amount .
+                $payhere_currency .
+                $status_code .
+                strtoupper(md5($merchant_secret))
+            )
+        );
+
+        if (($local_md5sig === $md5sig) && ($status_code == 2)) {
+            $order = Order::find($order_id);
+            if ($order) {
+                $order->status = 'processing';
+                $order->save();
+
+                // Deduct stock from product
+                foreach ($order->orderItems as $item) {
+                    $product = Product::find($item->product_id);
+                    $product->stock = $product->stock - $item->quantity;
+                    $product->save();
+                }
+
+                // Clear the user's cart
+                Cart::where('user_id', $order->user_id)->delete();
+
+                // Send order confirmation email
+                $this->sendOrderConfirmationEmail($order);
+            }
+        }
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    public function payhereReturn(Request $request)
+    {
+        // You can add logic here to display a success or failure message to the user.
+        // For an API, you might redirect to a frontend URL with the order status.
+        $order_id = $request->input('order_id');
+        $frontendUrl = env('FRONTEND_URL', 'http://localhost:3000');
+        return redirect($frontendUrl . '/order-success?order_id=' . $order_id);
+    }
 }
