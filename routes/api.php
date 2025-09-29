@@ -73,6 +73,8 @@ Route::prefix('v2')->group(function () {
         Route::post('/checkout', [OrderController::class, 'saveOrder']);
         Route::post('/payhere/checkout', [OrderController::class, 'payhereCheckout']);
         
+        Route::get('/wishlist', [WishlistController::class, 'index']); 
+        Route::post('/wishlist', [WishlistController::class, 'store']); 
         Route::delete('/wishlist/{product_id}', [WishlistController::class, 'destroy']);
 
     });
