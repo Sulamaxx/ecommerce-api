@@ -9,7 +9,8 @@ use Symfony\Component\HttpFoundation\Response;
 class VerifyCsrfToken
 {
     protected $except = [
-        '/api/v2/payhere/notify',
+	    '/api/v2/payhere/notify',
+	    'api/v2/products/*'
     ];
 
     /**
