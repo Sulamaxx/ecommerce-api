@@ -140,6 +140,15 @@ class OrderController extends Controller
                 "country" => $order->country,
             ];
 
+            // Generate hash
+            $merchant_secret = config('payhere.merchant_secret');
+            $hash_string = $payhere_data['merchant_id'] .
+                $payhere_data['order_id'] .
+                number_format($payhere_data['amount'], 2, '.', '') .
+                $payhere_data['currency'] .
+                strtoupper(md5($merchant_secret));
+            $payhere_data['hash'] = strtoupper(md5($hash_string));
+
             // --- Temporary Debug Logging ---
             Log::info('PayHere Checkout Request Data:', $payhere_data);
             // --------------------------
