@@ -15,12 +15,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Http;
+use App\Models\PendingPayhereOrder;
 
 class OrderController extends Controller
 {
     public function payhereCheckout(Request $request)
-    {
-        // Validate request data
+{
+            // Validate request data
         $validator = Validator::make($request->all(), [
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
@@ -52,109 +53,98 @@ class OrderController extends Controller
             return response()->json(['message' => 'Your cart is empty'], 400);
         }
 
-        try {
-            DB::beginTransaction();
-
-            // Check product stock before proceeding
-            foreach ($cartItems as $item) {
-                if ($item->product->stock < $item->quantity) {
-                    DB::rollBack();
-                    return response()->json([
-                        'message' => 'Insufficient stock for product: ' . $item->product->name,
-                        'product_id' => $item->product_id,
-                        'requested' => $item->quantity,
-                        'available' => $item->product->stock
-                    ], 400);
-                }
-            }
-
-            // Calculate order total
-            $total = 0;
-            $totalItemDiscount = 0;
-            foreach ($cartItems as $item) {
-                $item_price = $item->product->price;
-                $discount_percentage = $item->product->discount;
-                $discount_amount = ($item_price * $discount_percentage) / 100;
-                $discounted_price = $item_price - $discount_amount;
-
-                // Add to running totals
-                $total += $discounted_price * $item->quantity;
-                $totalItemDiscount += $discount_amount * $item->quantity;
-            }
-
-            $total = $total + $request->tax + $request->shipping_rate;
-
-            // Create the order
-            $order = Order::create([
-                'user_id' => $userId,
-                'shipping_address' => $request->shipping_address,
-                'payment_method' => 'PayHere',
-                'status' => 'pending',
-                'total' => $total,
-                'discount' => $totalItemDiscount,
-                'tax' => $request->tax,
-                'shipping_rate' => $request->shipping_rate,
-                'first_name' => $request->first_name,
-                'last_name' => $request->last_name,
-                'country' => $request->country,
-                'company' => $request->company,
-                'address' => $request->address,
-                'apartment' => $request->apartment,
-                'city' => $request->city,
-                'state' => $request->state,
-                'postal_code' => $request->postal_code,
-                'phone' => $request->phone
-            ]);
-
-            // Add items to order_items
-            foreach ($cartItems as $item) {
-                OrderItem::create([
-                    'order_id' => $order->id,
+        // Check product stock before proceeding
+        foreach ($cartItems as $item) {
+            if ($item->product->stock < $item->quantity) {
+                return response()->json([
+                    'message' => 'Insufficient stock for product: ' . $item->product->name,
                     'product_id' => $item->product_id,
-                    'quantity' => $item->quantity,
-                    'total' => ($item->product->price - ($item->product->price * $item->product->discount / 100)) * $item->quantity,
-                    'discount' => ($item->product->price * $item->product->discount / 100) * $item->quantity,
-                ]);
+                    'requested' => $item->quantity,
+                    'available' => $item->product->stock
+                ], 400);
             }
-
-            DB::commit();
-
-            $user = auth()->user();
-
-            $payhere_data = [
-                "sandbox" => config('payhere.mode') === 'sandbox',
-                "merchant_id" => config('payhere.merchant_id'),
-                "return_url" => route('payhere.return'),
-                "cancel_url" => config('app.frontend_url', url('/')),
-                "notify_url" => url('/api/v2/payhere/notify'),
-                "order_id" => $order->id,
-                "items" => "Order " . $order->id,
-                "amount" => $order->total,
-                "currency" => "LKR",
-                "first_name" => $order->first_name,
-                "last_name" => $order->last_name,
-                "email" => $user->email,
-                "phone" => $order->phone,
-                "address" => $order->address,
-                "city" => $order->city,
-                "country" => $order->country,
-            ];
-
-            // --- Temporary Debug Logging ---
-            Log::info('PayHere Checkout Request Data:', $payhere_data);
-            // --------------------------
-
-            return response()->json([
-                'message' => 'Order created, proceed to payment.',
-                'order' => $order->load('orderItems'),
-                'payhere' => $payhere_data
-            ], 201);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['message' => 'Failed to create order', 'error' => $e->getMessage()], 500);
         }
+
+    // Calculate totals (existing code)
+    $total = 0;
+    $totalItemDiscount = 0;
+    foreach ($cartItems as $item) {
+        $item_price = $item->product->price;
+        $discount_percentage = $item->product->discount;
+        $discount_amount = ($item_price * $discount_percentage) / 100;
+        $discounted_price = $item_price - $discount_amount;
+
+        $total += $discounted_price * $item->quantity;
+        $totalItemDiscount += $discount_amount * $item->quantity;
     }
+
+    $total = $total + $request->tax + $request->shipping_rate;
+
+    // Generate temporary order ID
+    $tempOrderId = time() . '-' . $userId;
+
+    // Store order data in DATABASE instead of session
+    PendingPayhereOrder::create([
+        'temp_order_id' => $tempOrderId,
+        'user_id' => $userId,
+        'order_data' => [
+            'shipping_address' => $request->shipping_address,
+            'payment_method' => 'PayHere',
+            'total' => $total,
+            'discount' => $totalItemDiscount,
+            'tax' => $request->tax,
+            'shipping_rate' => $request->shipping_rate,
+            'first_name' => $request->first_name,
+            'last_name' => $request->last_name,
+            'country' => $request->country,
+            'company' => $request->company,
+            'address' => $request->address,
+            'apartment' => $request->apartment,
+            'city' => $request->city,
+            'state' => $request->state,
+            'postal_code' => $request->postal_code,
+            'phone' => $request->phone,
+            'cart_items' => $cartItems->toArray()
+        ]
+    ]);
+
+    $user = auth()->user();
+
+    $payhere_data = [
+        "sandbox" => config('payhere.mode') === 'sandbox',
+        "merchant_id" => config('payhere.merchant_id'),
+        "return_url" => route('payhere.return'),
+        "cancel_url" => config('app.frontend_url', url('/')),
+        "notify_url" => env('NGROK_URL', url('/')) . '/api/v2/payhere/notify',
+        "order_id" => $tempOrderId,
+        "items" => "Order " . $tempOrderId,
+        "amount" => number_format($total, 2, '.', ''),
+        "currency" => "LKR",
+        "first_name" => $request->first_name,
+        "last_name" => $request->last_name,
+        "email" => $user->email,
+        "phone" => $request->phone,
+        "address" => $request->address,
+        "city" => $request->city,
+        "country" => $request->country,
+    ];
+
+    // Generate hash
+    $merchant_secret = config('payhere.merchant_secret');
+    $hash_string = $payhere_data['merchant_id'] .
+        $payhere_data['order_id'] .
+        $payhere_data['amount'] .
+        $payhere_data['currency'] .
+        strtoupper(md5($merchant_secret));
+    $payhere_data['hash'] = strtoupper(md5($hash_string));
+
+    Log::info('PayHere Checkout Request Data:', $payhere_data);
+
+    return response()->json([
+        'message' => 'Proceed to payment.',
+        'payhere' => $payhere_data
+    ], 200);
+}
 
     /**
      * Save a new order from the user's cart
@@ -1122,51 +1112,128 @@ class OrderController extends Controller
         }
     }
 
-    public function payhereNotify(Request $request)
-    {
-        $merchant_id = $request->input('merchant_id');
-        $order_id = $request->input('order_id');
-        $payhere_amount = $request->input('payhere_amount');
-        $payhere_currency = $request->input('payhere_currency');
-        $status_code = $request->input('status_code');
-        $md5sig = $request->input('md5sig');
+  public function payhereNotify(Request $request)
+{
+    $merchant_id = $request->input('merchant_id');
+    $order_id = $request->input('order_id');
+    $payhere_amount = $request->input('payhere_amount');
+    $payhere_currency = $request->input('payhere_currency');
+    $status_code = $request->input('status_code');
+    $md5sig = $request->input('md5sig');
 
-        $merchant_secret = config('payhere.merchant_secret');
+    $merchant_secret = config('payhere.merchant_secret');
 
-        $local_md5sig = strtoupper(
-            md5(
-                $merchant_id .
-                $order_id .
-                $payhere_amount .
-                $payhere_currency .
-                $status_code .
-                strtoupper(md5($merchant_secret))
-            )
-        );
+    $local_md5sig = strtoupper(
+        md5(
+            $merchant_id .
+            $order_id .
+            $payhere_amount .
+            $payhere_currency .
+            $status_code .
+            strtoupper(md5($merchant_secret))
+        )
+    );
 
-        if (($local_md5sig === $md5sig) && ($status_code == 2)) {
-            $order = Order::find($order_id);
-            if ($order) {
-                $order->status = 'processing';
-                $order->save();
+    Log::info('PayHere Notify received', [
+        'order_id' => $order_id,
+        'status_code' => $status_code,
+        'hash_valid' => ($local_md5sig === $md5sig)
+    ]);
 
-                // Deduct stock from product
-                foreach ($order->orderItems as $item) {
-                    $product = Product::find($item->product_id);
-                    $product->stock = $product->stock - $item->quantity;
-                    $product->save();
-                }
+    if (($local_md5sig === $md5sig) && ($status_code == 2)) {
+        // Retrieve order data from DATABASE
+        $pendingOrder = PendingPayhereOrder::where('temp_order_id', $order_id)->first();
 
-                // Clear the user's cart
-                Cart::where('user_id', $order->user_id)->delete();
-
-                // Send order confirmation email
-                $this->sendOrderConfirmationEmail($order);
-            }
+        if (!$pendingOrder) {
+            Log::error('Order data not found in database', ['temp_order_id' => $order_id]);
+            return response()->json(['status' => 'error', 'message' => 'Order data not found'], 404);
         }
 
-        return response()->json(['status' => 'ok']);
+        $orderData = $pendingOrder->order_data;
+
+        DB::beginTransaction();
+        try {
+            // Re-check stock availability
+            $cartItems = collect($orderData['cart_items']);
+            foreach ($cartItems as $item) {
+                $product = Product::find($item['product_id']);
+                if (!$product || $product->stock < $item['quantity']) {
+                    DB::rollBack();
+                    Log::error('Insufficient stock during payment completion', [
+                        'product_id' => $item['product_id'],
+                        'requested' => $item['quantity'],
+                        'available' => $product ? $product->stock : 0
+                    ]);
+                    return response()->json(['status' => 'error', 'message' => 'Insufficient stock'], 400);
+                }
+            }
+
+            // Create the actual order
+            $order = Order::create([
+                'user_id' => $pendingOrder->user_id,
+                'shipping_address' => $orderData['shipping_address'],
+                'payment_method' => $orderData['payment_method'],
+                'status' => 'processing',
+                'total' => $orderData['total'],
+                'discount' => $orderData['discount'],
+                'tax' => $orderData['tax'],
+                'shipping_rate' => $orderData['shipping_rate'],
+                'first_name' => $orderData['first_name'],
+                'last_name' => $orderData['last_name'],
+                'country' => $orderData['country'],
+                'company' => $orderData['company'],
+                'address' => $orderData['address'],
+                'apartment' => $orderData['apartment'],
+                'city' => $orderData['city'],
+                'state' => $orderData['state'],
+                'postal_code' => $orderData['postal_code'],
+                'phone' => $orderData['phone']
+            ]);
+
+            // Create order items and deduct stock
+            foreach ($cartItems as $item) {
+                $product = Product::find($item['product_id']);
+                
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $item['product_id'],
+                    'quantity' => $item['quantity'],
+                    'total' => ($product->price - ($product->price * $product->discount / 100)) * $item['quantity'],
+                    'discount' => ($product->price * $product->discount / 100) * $item['quantity'],
+                ]);
+
+                // Deduct stock
+                $product->stock = $product->stock - $item['quantity'];
+                $product->save();
+            }
+
+            // Clear the user's cart
+            Cart::where('user_id', $pendingOrder->user_id)->delete();
+
+            // Delete pending order record
+            $pendingOrder->delete();
+
+            DB::commit();
+
+            // Send order confirmation email
+            $this->sendOrderConfirmationEmail($order);
+
+            Log::info('Order created successfully after payment', ['order_id' => $order->id]);
+
+            return response()->json(['status' => 'ok', 'order_id' => $order->id]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to create order after payment', [
+                'temp_order_id' => $order_id,
+                'error' => $e->getMessage()
+            ]);
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+        }
     }
+
+    return response()->json(['status' => 'ok']);
+}
 
     public function payhereReturn(Request $request)
     {
