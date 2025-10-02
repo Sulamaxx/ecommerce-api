@@ -91,6 +91,7 @@ Route::prefix('v2')->group(function () {
         Route::get('/admin/staff/paginated/', [StaffController::class, 'getPaginatedStaff']);
         Route::post('/staff', [StaffController::class, 'store']);
         Route::put('/staff/{id}', [StaffController::class, 'update']);
+        Route::delete('/staff/{id}', [StaffController::class, 'destroy']);
         
         Route::post('/products/add_new_product', [ProductController::class, 'store']);
         Route::put('/products/{product_id}', [ProductController::class, 'update']);
