@@ -945,7 +945,7 @@ class OrderController extends Controller
             )
             ->groupBy('products.id', 'products.name', 'products.price')
             ->orderByDesc('total_sales')
-            ->limit(3)
+            ->limit(10)
             ->get();
 
         // Get the product IDs
