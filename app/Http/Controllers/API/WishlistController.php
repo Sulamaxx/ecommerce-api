@@ -31,11 +31,13 @@ class WishlistController extends Controller
                 $productImageUrl = env('APP_ASSET_URL', config('app.url')) . '/storage/' . $imagePath;
             }
             
-            // Calculate discounted price
+            // Calculate discounted price based on discount type - UPDATED
             $originalPrice = $product ? $product->price : 0;
-            $discountPercentage = $product ? $product->discount : 0;
-            $discountAmount = ($originalPrice * $discountPercentage) / 100;
-            $discountedPrice = $originalPrice - $discountAmount;
+            $discount = $product ? $product->discount : 0;
+            $discountType = $product ? $product->discount_type : 'percentage';
+            $currency = $product ? $product->currency : 'LKR';
+            
+            $discountedPrice = $this->calculateDiscountedPrice($originalPrice, $discountType, $discount);
             
             return [
                 'id' => $item->id,
@@ -49,10 +51,13 @@ class WishlistController extends Controller
                     'description' => $product->description,
                     'category' => $product->category,
                     'price' => $originalPrice,
+                    'currency' => $currency,
+                    'discount_type' => $discountType,
                     'discount' => $product->discount > 0 ? (float) $product->discount : null,
                     'discounted_price' => round($discountedPrice, 0),
                     'image' => $productImageUrl,
                     'rating' => $product->rating,
+                    'stock' => $product->stock,
                     'is_in_stock' => $product->stock > 0
                 ]
             ];
@@ -94,10 +99,13 @@ class WishlistController extends Controller
                 $productImageUrl = env('APP_ASSET_URL', config('app.url')) . '/storage/' . $imagePath;
             }
 
+            // Calculate discounted price based on discount type - UPDATED
             $originalPrice = $product ? $product->price : 0;
-            $discountPercentage = $product ? $product->discount : 0;
-            $discountAmount = ($originalPrice * $discountPercentage) / 100;
-            $discountedPrice = $originalPrice - $discountAmount;
+            $discount = $product ? $product->discount : 0;
+            $discountType = $product ? $product->discount_type : 'percentage';
+            $currency = $product ? $product->currency : 'LKR';
+            
+            $discountedPrice = $this->calculateDiscountedPrice($originalPrice, $discountType, $discount);
 
             $formattedWishlist = [
                 'id' => $wishlist->id,
@@ -111,9 +119,13 @@ class WishlistController extends Controller
                     'description' => $product->description,
                     'category' => $product->category,
                     'price' => $originalPrice,
+                    'currency' => $currency,
+                    'discount_type' => $discountType,
                     'discount' => $product->discount > 0 ? (float) $product->discount : null,
                     'discounted_price' => round($discountedPrice, 0),
                     'image' => $productImageUrl,
+                    'rating' => $product->rating,
+                    'stock' => $product->stock,
                     'is_in_stock' => $product->stock > 0
                 ]
             ];
@@ -153,6 +165,28 @@ class WishlistController extends Controller
                 'message' => 'Failed to remove product from wishlist',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /**
+     * Calculate discounted price based on discount type
+     * 
+     * @param float $price Original price
+     * @param string $discountType 'percentage' or 'amount'
+     * @param float $discount Discount value
+     * @return float Final price after discount
+     */
+    protected function calculateDiscountedPrice($price, $discountType, $discount)
+    {
+        if (!$discount || $discount <= 0) {
+            return $price;
+        }
+        
+        if ($discountType === 'amount') {
+            return max(0, $price - $discount);
+        } else {
+            // Default to percentage
+            return $price - ($price * $discount / 100);
         }
     }
 }

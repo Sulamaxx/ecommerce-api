@@ -30,7 +30,8 @@ class ProductController extends Controller
             'sku' => 'required|string|max:255|unique:products,name',
             'stockQuantity' => 'required|integer|min:1',
             'price' => 'required|integer|min:0',
-            'discountPercentage' => 'required|integer|min:0',
+            'discountType' => 'required|in:percentage,amount',
+            'discount' => 'required|numeric|min:0',
             'images' => 'required|array|min:1|max:3',
             'images.*' => 'required|image|mimes:jpeg,png|max:2048',
             'userGuide' => 'nullable|file|mimes:pdf|max:5120',
@@ -48,8 +49,22 @@ class ProductController extends Controller
             // Start a database transaction
             DB::beginTransaction();
 
-            // Calculate the discount amount based on percentage
             $price = $request->price;
+
+            // Validate discount value based on type
+            if ($request->discountType === 'percentage' && $request->discount > 100) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Percentage discount cannot exceed 100%'
+                ], 422);
+            }
+
+            if ($request->discountType === 'amount' && $request->discount > $price) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Amount discount cannot exceed product price'
+                ], 422);
+            }
 
             // Create the product
             $product = new Product();
@@ -57,7 +72,8 @@ class ProductController extends Controller
             $product->description = $request->description;
             $product->category = $request->category;
             $product->price = $price;
-            $product->discount = $request->discountPercentage;
+            $product->discount_type = $request->discountType;
+            $product->discount = $request->discount;
             $product->initial_stock = $request->stockQuantity;
             $product->stock = $request->stockQuantity;
 
@@ -128,7 +144,8 @@ class ProductController extends Controller
             'sku' => 'required|string|max:255|unique:products,name,'.$id,
             'stockQuantity' => 'required|integer|min:0',
             'price' => 'required|integer|min:0',
-            'discountPercentage' => 'required|integer|min:0',
+            'discountType' => 'required|in:percentage,amount',
+            'discount' => 'required|numeric|min:0',
             'images' => 'nullable|array|max:3',
             'images.*' => 'nullable|image|mimes:jpeg,png|max:2048',
             'userGuide' => 'nullable|file|mimes:pdf|max:5120',
@@ -149,15 +166,30 @@ class ProductController extends Controller
             // Start a database transaction
             DB::beginTransaction();
 
-            // Calculate the discount amount based on percentage
             $price = $request->price;
+
+            // Validate discount value based on type
+            if ($request->discountType === 'percentage' && $request->discount > 100) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Percentage discount cannot exceed 100%'
+                ], 422);
+            }
+
+            if ($request->discountType === 'amount' && $request->discount > $price) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Amount discount cannot exceed product price'
+                ], 422);
+            }
 
             // Update product details
             $product->name = $request->name;
             $product->description = $request->description;
             $product->category = $request->category;
             $product->price = $price;
-            $product->discount = $request->discountPercentage;
+            $product->discount_type = $request->discountType;
+            $product->discount = $request->discount;
             $product->stock = $request->stockQuantity;
 
             // Remove user guide if requested
@@ -383,6 +415,7 @@ class ProductController extends Controller
                     'image' => $imagePath,
                     'rating' => $product->rating,
                     'isNew' => (bool) $this->isProductNew(product: $product),
+                    'discount_type' => $product->discount_type,
                     'discount' => $product->discount > 0 ? (float) $product->discount : null,
                     'category' => $product->category
                 ];
@@ -553,5 +586,29 @@ public function getPaginatedProducts(Request $request)
     {
         $twoMonthsAgo = Carbon::now()->subMonths(2);
         return $product->created_at->greaterThanOrEqualTo($twoMonthsAgo);
+    }
+
+        /**
+     * Helper method to calculate discounted price
+     */
+    public static function calculateDiscountedPrice($price, $discountType, $discount)
+    {
+        if ($discountType === 'percentage') {
+            return $price - ($price * $discount / 100);
+        } else {
+            return max(0, $price - $discount);
+        }
+    }
+
+    /**
+     * Helper method to calculate discount amount
+     */
+    public static function calculateDiscountAmount($price, $discountType, $discount)
+    {
+        if ($discountType === 'percentage') {
+            return $price * $discount / 100;
+        } else {
+            return min($price, $discount);
+        }
     }
 }

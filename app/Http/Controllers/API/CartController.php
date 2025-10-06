@@ -84,44 +84,59 @@ class CartController extends Controller
      * @return \Illuminate\Http\JsonResponse
      */
     public function getCartItems()
-    {
-        $cartItems = Cart::where('user_id', auth()->id())
-            ->with(['product' => function($query) {
-                $query->select('id', 'name', 'description', 'price', 'discount', 'stock', 'category');
-            }])
-            ->get();
+{
+    $cartItems = Cart::where('user_id', auth()->id())
+        ->with(['product' => function($query) {
+            $query->select('id', 'name', 'description', 'price', 'discount_type', 'discount', 'stock', 'category');
+        }])
+        ->get();
 
-        $formattedCartItems = $cartItems->map(function($item) {
-            // Get the first image for each product
-            $productImage = $item->product->images()->first();
-            $imagePath = $productImage ?  env('APP_ASSET_URL') . '/storage/' . $productImage->path : null;
-            
-            return [
-                'id' => $item->id,
-                'product_id' => $item->product_id,
-                'quantity' => $item->quantity,
-                'product' => [
-                    'id' => $item->product->id,
-                    'name' => $item->product->name,
-                    'description' => $item->product->description,
-                    'price' => $item->product->price,
-                    'discount' => $item->product->discount,
-                    'stock' => $item->product->stock,
-                    'category' => $item->product->category,
-                    'image' => $imagePath
-                ],
-                'total_price' => $item->quantity * ($item->product->price - ($item->product->price * $item->product->discount)/100),
-            ];
-        });
+    $formattedCartItems = $cartItems->map(function($item) {
+        // Get the first image for each product
+        $productImage = $item->product->images()->first();
+        $imagePath = $productImage ?  env('APP_ASSET_URL') . '/storage/' . $productImage->path : null;
+        
+        // Calculate discount and final price based on discount type
+        $originalPrice = $item->product->price;
+        $discountType = $item->product->discount_type;
+        $discountValue = $item->product->discount;
+        
+        if ($discountType === 'percentage') {
+            $discountAmount = ($originalPrice * $discountValue) / 100;
+        } else {
+            $discountAmount = $discountValue;
+        }
+        
+        $finalPrice = $originalPrice - $discountAmount;
+        
+        return [
+            'id' => $item->id,
+            'product_id' => $item->product_id,
+            'quantity' => $item->quantity,
+            'product' => [
+                'id' => $item->product->id,
+                'name' => $item->product->name,
+                'description' => $item->product->description,
+                'price' => $item->product->price,
+                'discount_type' => $discountType,
+                'discount' => $discountValue,
+                'discount_amount' => $discountAmount,
+                'stock' => $item->product->stock,
+                'category' => $item->product->category,
+                'image' => $imagePath
+            ],
+            'total_price' => $item->quantity * $finalPrice,
+        ];
+    });
 
-        return response()->json([
-            'status' => true,
-            'message' => 'Cart items retrieved successfully',
-            'data' => $formattedCartItems,
-            'total_items' => $cartItems->sum('quantity'),
-            'total_amount' => $formattedCartItems->sum('total_price')
-        ], 200);
-    }
+    return response()->json([
+        'status' => true,
+        'message' => 'Cart items retrieved successfully',
+        'data' => $formattedCartItems,
+        'total_items' => $cartItems->sum('quantity'),
+        'total_amount' => $formattedCartItems->sum('total_price')
+    ], 200);
+}
 
     /**
      * Update cart item quantity
