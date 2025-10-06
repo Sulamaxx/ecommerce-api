@@ -220,23 +220,24 @@ class OrderController extends Controller
             $total = 0;
             $totalItemDiscount = 0;
             foreach ($cartItems as $item) {
-            $item_price = $item->product->price;
-            $discount_type = $item->product->discount_type;
-            $discount = $item->product->discount;
-    
-            if ($discount_type === 'percentage') {
-                $discount_amount = ($item_price * $discount) / 100;
-            } else {
-                $discount_amount = $discount;
-            }
-    
-    $discounted_price = $item_price - $discount_amount;
+                $item_price = $item->product->price;
+                $discount_type = $item->product->discount_type;
+                $discount = $item->product->discount;
 
-    // Add to running totals
-    $total += $discounted_price * $item->quantity;
-    $totalItemDiscount += $discount_amount * $item->quantity;
+                if ($discount_type === 'percentage') {
+                    $discount_amount = ($item_price * $discount) / 100;
+                } else {
+                    $discount_amount = $discount;
+                }
 
-            // Apply discount, tax and shipping
+                $discounted_price = $item_price - $discount_amount;
+
+                // Add to running totals
+                $total += $discounted_price * $item->quantity;
+                $totalItemDiscount += $discount_amount * $item->quantity;
+            } // <- This closing brace was missing or misplaced
+
+            // Apply discount, tax and shipping (OUTSIDE the foreach loop)
             // $total = $total - $request->discount + $request->tax + $request->shipping_rate; //For Security purposes keep commented (No addtional discount for now from frontend)
             $total = $total + $request->tax + $request->shipping_rate;
 
@@ -292,7 +293,6 @@ class OrderController extends Controller
                 'message' => 'Order created successfully',
                 'order' => $order->load('orderItems')
             ], 201);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Failed to create order', 'error' => $e->getMessage()], 500);
