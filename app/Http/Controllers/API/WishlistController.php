@@ -4,6 +4,7 @@ namespace App\Http\Controllers\API;
 
 use App\Http\Controllers\Controller;
 use App\Models\Wishlist;
+use App\Models\Product;
 use Illuminate\Http\Request;
 
 class WishlistController extends Controller
@@ -11,14 +12,28 @@ class WishlistController extends Controller
     // Get all wishlist items for the authenticated user
     public function index(Request $request)
     {
+
+    // Clean up inactive products from wishlist
+    $inactiveProductIds = Product::where('status', 'INACTIVE')->pluck('id');
+    if ($inactiveProductIds->count() > 0) {
+        Wishlist::where('user_id', $request->user()->id)
+            ->whereIn('product_id', $inactiveProductIds)
+            ->delete();
+    }
+
         $wishlist = Wishlist::with([
-            'product',
+            'product' => function($query) {
+            $query->where('status', 'ACTIVE');
+            },
             'product.images' => function($query) {
                 $query->orderBy('id', 'asc')->limit(1); // Get first image only
             }
         ])
         ->where('user_id', $request->user()->id)
-        ->get();
+        ->get()
+        ->filter(function($item) {
+            return $item->product !== null; // Remove items with null product
+        });
 
         // Format the response with product details and first image
         $formattedWishlist = $wishlist->map(function($item) {
@@ -76,6 +91,18 @@ class WishlistController extends Controller
         $request->validate([
             'product_id' => 'required|exists:products,id',
         ]);
+
+        // Check if product is active
+        $product = Product::where('id', $request->product_id)
+            ->where('status', 'ACTIVE')
+            ->first();
+        
+        if (!$product) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Product not available'
+            ], 400);
+        }
 
         try {
             $wishlist = Wishlist::firstOrCreate([

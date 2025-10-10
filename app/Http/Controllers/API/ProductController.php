@@ -273,12 +273,75 @@ class ProductController extends Controller
     }
 
     /**
+     * Soft delete product (set status to INACTIVE)
+     * 
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function destroy($id)
+    {
+        try {
+            $product = Product::findOrFail($id);
+
+            // Start a database transaction
+            DB::beginTransaction();
+
+            // Set status to INACTIVE instead of deleting
+            $product->status = 'INACTIVE';
+            $product->save();
+
+            // Commit the transaction
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Product deleted successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            // Rollback the transaction in case of error
+            DB::rollBack();
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to delete product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Restore product (set status to ACTIVE)
+     * 
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function restore($id)
+    {
+        try {
+            $product = Product::findOrFail($id);
+            $product->status = 'ACTIVE';
+            $product->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Product restored successfully'
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to restore product',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
      * Remove the specified product from storage.
      *
      * @param  int  $id
      * @return \Illuminate\Http\Response
      */
-    public function destroy($id)
+    public function destroyOld($id)
     {
         try {
             $product = Product::findOrFail($id);
@@ -342,7 +405,9 @@ class ProductController extends Controller
      */
     public function show($id)
     {
-        $product = Product::with('images')->findOrFail($id);
+        $product = Product::with('images')
+            ->where('status', 'ACTIVE')
+            ->findOrFail($id);
 
 
         // Add isNew field
@@ -374,7 +439,8 @@ class ProductController extends Controller
         try {
             // Start with a base query that always checks for stock > 0
             $query = Product::with('images')
-                ->where('stock', '>', 0);
+                ->where('stock', '>', 0)
+                ->where('status', 'ACTIVE');
             
             // Apply category filter if provided
             if ($request->has('category') && $request->category !== 'All Categories') {
@@ -451,7 +517,8 @@ public function getPaginatedProducts(Request $request)
         $perPage = 9;
         
         // Start with a base query
-        $query = Product::with('images');
+        $query = Product::with('images')
+            ->where('status', 'ACTIVE');
         
         // Apply category filter if provided
         if ($request->has('category') && $request->category !== 'ALL') {
@@ -534,6 +601,7 @@ public function getPaginatedProducts(Request $request)
                 $products = Product::with('images')
                     ->where('category', $category)
                     ->where('stock', '>', 0) // Ensure products are in stock
+                    ->where('status', 'ACTIVE')
                     ->orderByRaw('(initial_stock - stock) DESC') // Order by sales count
                     ->limit(3)
                     ->get();

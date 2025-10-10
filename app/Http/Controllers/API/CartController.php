@@ -33,6 +33,14 @@ class CartController extends Controller
         }
 
         $product = Product::find($request->product_id);
+
+        // Check if product is active
+        if ($product->status !== 'ACTIVE') {
+            return response()->json([
+                'status' => false,
+                'message' => 'This product is no longer available'
+            ], 400);
+        }
         
         // Check if product has enough stock
         if ($product->stock < $request->quantity) {
@@ -85,11 +93,23 @@ class CartController extends Controller
      */
     public function getCartItems()
 {
+    // First, clean up any inactive products in cart
+    $inactiveProductIds = Product::where('status', 'INACTIVE')->pluck('id');
+    if ($inactiveProductIds->count() > 0) {
+        Cart::where('user_id', auth()->id())
+            ->whereIn('product_id', $inactiveProductIds)
+            ->delete();
+    }
+
     $cartItems = Cart::where('user_id', auth()->id())
         ->with(['product' => function($query) {
-            $query->select('id', 'name', 'description', 'price', 'discount_type', 'discount', 'stock', 'category');
+            $query->where('status', 'ACTIVE')
+                  ->select('id', 'name', 'description', 'price', 'discount_type', 'discount', 'stock', 'category');
         }])
-        ->get();
+        ->get()
+        ->filter(function($cartItem) {
+            return $cartItem->product !== null; // Remove items with null product (inactive)
+        });
 
     $formattedCartItems = $cartItems->map(function($item) {
         // Get the first image for each product

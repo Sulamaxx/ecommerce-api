@@ -956,6 +956,7 @@ class OrderController extends Controller
                 DB::raw('SUM(order_items.quantity) as total_sales'),
                 DB::raw('SUM(order_items.total) as total_amount')
             )
+            ->where('products.status', 'ACTIVE')
             ->groupBy('products.id', 'products.name', 'products.price')
             ->orderByDesc('total_sales')
             ->limit(10)

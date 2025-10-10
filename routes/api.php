@@ -95,6 +95,8 @@ Route::prefix('v2')->group(function () {
         
         Route::post('/products/add_new_product', [ProductController::class, 'store']);
         Route::put('/products/{product_id}', [ProductController::class, 'update']);
+        Route::delete('/products/{product_id}', [ProductController::class, 'destroy']);
+        Route::post('/products/{product_id}/restore', [ProductController::class, 'restore']);
     });
     
     Route::middleware(['auth:sanctum', 'is_admin_or_staff'])->group(function () {
