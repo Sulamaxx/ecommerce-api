@@ -20,8 +20,8 @@ use App\Models\PendingPayhereOrder;
 class OrderController extends Controller
 {
     public function payhereCheckout(Request $request)
-{
-            // Validate request data
+    {
+        // Validate request data
         $validator = Validator::make($request->all(), [
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
@@ -32,7 +32,7 @@ class OrderController extends Controller
             'apartment' => 'nullable|string|max:255',
             'city' => 'required|string|max:255',
             'state' => 'nullable|string|max:255',
-            'postal_code' => 'required|string|max:20',
+            'postal_code' => 'nullable|string|max:20',
             'phone' => 'required|string|max:20',
             'shipping_rate' => 'required|numeric',
             'tax' => 'required|numeric',
@@ -65,18 +65,19 @@ class OrderController extends Controller
             }
         }
 
-    // Calculate totals (existing code)
-    $total = 0;
-    $totalItemDiscount = 0;
+        // Calculate totals with consistent discount calculation
+        $total = 0;
+        $totalItemDiscount = 0;
         foreach ($cartItems as $item) {
             $item_price = $item->product->price;
-            $discount_type = $item->product->discount_type; // NEW
-            $discount = $item->product->discount; // EXISTING
+            $discount_type = $item->product->discount_type;
+            $discount = $item->product->discount;
 
+            // Calculate discount amount based on type
             if ($discount_type === 'percentage') {
                 $discount_amount = ($item_price * $discount) / 100;
             } else {
-                $discount_amount = $discount;
+                $discount_amount = min($discount, $item_price); // Ensure discount doesn't exceed price
             }
 
             $discounted_price = $item_price - $discount_amount;
@@ -85,80 +86,99 @@ class OrderController extends Controller
             $totalItemDiscount += $discount_amount * $item->quantity;
         }
 
-    $total = $total + $request->tax + $request->shipping_rate;
+        $total = $total + $request->tax + $request->shipping_rate;
 
-    // Generate temporary order ID
-    $tempOrderId = time() . '-' . $userId;
+        // Generate temporary order ID
+        $tempOrderId = time() . '-' . $userId;
 
-    // Store order data in DATABASE instead of session
-    PendingPayhereOrder::create([
-        'temp_order_id' => $tempOrderId,
-        'user_id' => $userId,
-        'order_data' => [
-            'shipping_address' => $request->shipping_address,
-            'payment_method' => 'PayHere',
-            'total' => $total,
-            'discount' => $totalItemDiscount,
-            'tax' => $request->tax,
-            'shipping_rate' => $request->shipping_rate,
-            'first_name' => $request->first_name,
-            'last_name' => $request->last_name,
-            'country' => $request->country,
-            'company' => $request->company,
-            'address' => $request->address,
-            'apartment' => $request->apartment,
-            'city' => $request->city,
-            'state' => $request->state,
-            'postal_code' => $request->postal_code,
-            'phone' => $request->phone,
-            'cart_items' => $cartItems->toArray()
-        ]
-    ]);
+        // Store order data in DATABASE instead of session
+        PendingPayhereOrder::create([
+            'temp_order_id' => $tempOrderId,
+            'user_id' => $userId,
+            'order_data' => [
+                'shipping_address' => $request->shipping_address,
+                'payment_method' => 'PayHere',
+                'total' => $total,
+                'discount' => $totalItemDiscount,
+                'tax' => $request->tax,
+                'shipping_rate' => $request->shipping_rate,
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'country' => $request->country,
+                'company' => $request->company,
+                'address' => $request->address,
+                'apartment' => $request->apartment,
+                'city' => $request->city,
+                'state' => $request->state,
+                'postal_code' => $request->postal_code,
+                'phone' => $request->phone,
+                'cart_items' => $cartItems->toArray()
+            ]
+        ]);
 
-    $user = auth()->user();
+        $user = auth()->user();
 
-    $payhere_data = [
-        "sandbox" => config('payhere.mode') === 'sandbox',
-        "merchant_id" => config('payhere.merchant_id'),
-        "return_url" => route('payhere.return'),
-        "cancel_url" => config('app.frontend_url', url('/')),
-        "notify_url" => env('NGROK_URL', url('/')) . '/api/v2/payhere/notify',
-        "order_id" => $tempOrderId,
-        "items" => "Order " . $tempOrderId,
-        "amount" => number_format($total, 2, '.', ''),
-        "currency" => "LKR",
-        "first_name" => $request->first_name,
-        "last_name" => $request->last_name,
-        "email" => $user->email,
-        "phone" => $request->phone,
-        "address" => $request->address,
-        "city" => $request->city,
-        "country" => $request->country,
-    ];
+        $payhere_data = [
+            "sandbox" => config('payhere.mode') === 'sandbox',
+            "merchant_id" => config('payhere.merchant_id'),
+            "return_url" => route('payhere.return'),
+            "cancel_url" => config('app.frontend_url', url('/')),
+            "notify_url" => env('NGROK_URL', url('/')) . '/api/v2/payhere/notify',
+            "order_id" => $tempOrderId,
+            "items" => "Order " . $tempOrderId,
+            "amount" => number_format($total, 2, '.', ''),
+            "currency" => "LKR",
+            "first_name" => $request->first_name,
+            "last_name" => $request->last_name,
+            "email" => $user->email,
+            "phone" => $request->phone,
+            "address" => $request->address,
+            "city" => $request->city,
+            "country" => $request->country,
+        ];
 
-    // Generate hash
-    $merchant_secret = config('payhere.merchant_secret');
-    $hash_string = $payhere_data['merchant_id'] .
-        $payhere_data['order_id'] .
-        $payhere_data['amount'] .
-        $payhere_data['currency'] .
-        strtoupper(md5($merchant_secret));
-    $payhere_data['hash'] = strtoupper(md5($hash_string));
+        // Generate hash
+        $merchant_secret = config('payhere.merchant_secret');
+        $hash_string = $payhere_data['merchant_id'] .
+            $payhere_data['order_id'] .
+            $payhere_data['amount'] .
+            $payhere_data['currency'] .
+            strtoupper(md5($merchant_secret));
+        $payhere_data['hash'] = strtoupper(md5($hash_string));
 
-    Log::info('PayHere Checkout Request Data:', $payhere_data);
+        Log::info('PayHere Checkout Request Data:', $payhere_data);
 
-    return response()->json([
-        'message' => 'Proceed to payment.',
-        'payhere' => $payhere_data
-    ], 200);
-}
+        return response()->json([
+            'message' => 'Proceed to payment.',
+            'payhere' => $payhere_data
+        ], 200);
+    }
 
     /**
-     * Save a new order from the user's cart
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
+     * Helper method to calculate product price with discount
+     * This ensures consistent discount calculation across all methods
      */
+    private function calculateDiscountedPrice($product)
+    {
+        $price = $product->price;
+        $discount_type = $product->discount_type;
+        $discount = $product->discount;
+
+        // Calculate discount amount based on type
+        if ($discount_type === 'percentage') {
+            $discount_amount = ($price * $discount) / 100;
+        } else {
+            // For amount discount, ensure it doesn't exceed the product price
+            $discount_amount = min($discount, $price);
+        }
+
+        return [
+            'original_price' => $price,
+            'discount_amount' => $discount_amount,
+            'final_price' => $price - $discount_amount
+        ];
+    }
+
     /**
      * Save a new order from the user's cart
      *
@@ -179,7 +199,7 @@ class OrderController extends Controller
             'apartment' => 'nullable|string|max:255',
             'city' => 'required|string|max:255',
             'state' => 'nullable|string|max:255',
-            'postal_code' => 'required|string|max:20',
+            'postal_code' => 'nullable|string|max:20',
             'phone' => 'required|string|max:20',
             'shipping_rate' => 'required|numeric',
             'tax' => 'required|numeric',
@@ -216,29 +236,21 @@ class OrderController extends Controller
                 }
             }
 
-            // Calculate order total
+            // Calculate order total with consistent discount calculation
             $total = 0;
             $totalItemDiscount = 0;
             foreach ($cartItems as $item) {
-                $item_price = $item->product->price;
-                $discount_type = $item->product->discount_type;
-                $discount = $item->product->discount;
+                $priceCalculation = $this->calculateDiscountedPrice($item->product);
 
-                if ($discount_type === 'percentage') {
-                    $discount_amount = ($item_price * $discount) / 100;
-                } else {
-                    $discount_amount = $discount;
-                }
-
-                $discounted_price = $item_price - $discount_amount;
+                $discounted_price = $priceCalculation['final_price'];
+                $discount_amount = $priceCalculation['discount_amount'];
 
                 // Add to running totals
                 $total += $discounted_price * $item->quantity;
                 $totalItemDiscount += $discount_amount * $item->quantity;
-            } // <- This closing brace was missing or misplaced
+            }
 
-            // Apply discount, tax and shipping (OUTSIDE the foreach loop)
-            // $total = $total - $request->discount + $request->tax + $request->shipping_rate; //For Security purposes keep commented (No addtional discount for now from frontend)
+            // Apply tax and shipping (no additional discount from frontend for security)
             $total = $total + $request->tax + $request->shipping_rate;
 
             // Create the order
@@ -248,7 +260,6 @@ class OrderController extends Controller
                 'payment_method' => $request->payment_method,
                 'status' => 'processing',
                 'total' => $total,
-                // 'discount' => $request->discount + $totalItemDiscount, //Not accept discount from front for now
                 'discount' => $totalItemDiscount,
                 'tax' => $request->tax,
                 'shipping_rate' => $request->shipping_rate,
@@ -266,13 +277,18 @@ class OrderController extends Controller
 
             // Add items to order_items and deduct stock
             foreach ($cartItems as $item) {
-                // Create order item
+                $priceCalculation = $this->calculateDiscountedPrice($item->product);
+
+                $discounted_price = $priceCalculation['final_price'];
+                $discount_amount = $priceCalculation['discount_amount'];
+
+                // Create order item with correct calculations
                 OrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $item->product_id,
                     'quantity' => $item->quantity,
-                    'total' => ($item->product->price - ($item->product->price * $item->product->discount / 100)) * $item->quantity,
-                    'discount' => ($item->product->price * $item->product->discount / 100) * $item->quantity,
+                    'total' => $discounted_price * $item->quantity,
+                    'discount' => $discount_amount * $item->quantity,
                 ]);
 
                 // Deduct stock from product
@@ -353,7 +369,7 @@ class OrderController extends Controller
 
         // Check if user owns this order
         if (auth()->id() !== $order->user_id && auth()->user()->user_type !== 'admin' && auth()->user()->user_type !== 'staff') {
-            return response()->json(['message' => 'Unathorized  Access! Order Owner, Admin or Staff only can update the order.'], 403);
+            return response()->json(['message' => 'Unauthorized Access! Order Owner, Admin or Staff only can update the order.'], 403);
         }
 
         // Validate request data
@@ -438,7 +454,6 @@ class OrderController extends Controller
                 'message' => 'Order updated successfully',
                 'order' => $order->load('orderItems')
             ]);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['message' => 'Failed to update order', 'error' => $e->getMessage()], 500);
@@ -514,7 +529,6 @@ class OrderController extends Controller
                     ]
                 ]
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -525,7 +539,7 @@ class OrderController extends Controller
     }
 
     /**
-     * Get paginated order history for the authenticated user
+     * Get paginated order history for all users (admin)
      *
      * @param Request $request
      * @return \Illuminate\Http\JsonResponse
@@ -574,7 +588,6 @@ class OrderController extends Controller
                     ]
                 ]
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -600,10 +613,6 @@ class OrderController extends Controller
 
             // Start with a base query - admins see all orders, users see only their own
             $query = Order::with(['orderItems.product', 'user']);
-
-            // if (!auth()->user()->isAdmin()) {
-            //     $query->where('user_id', auth()->id());
-            // }
 
             // Apply search filter if provided
             if ($request->has('search') && !empty($request->search)) {
@@ -665,8 +674,6 @@ class OrderController extends Controller
                         'address' => $this->formatFullAddress($order)
                     ],
                     'paymentInfo' => [
-                        // 'cardType' => $this->determineCardType($order->payment_method),
-                        // 'cardNumber' => '**** **** ' . substr($order->payment_method_details ?? '0000', -4),
                         'paymentMethod' => $order->payment_method,
                         'businessName' => $order->company ?: ($order->first_name . ' ' . $order->last_name),
                         'phone' => $order->phone
@@ -701,7 +708,6 @@ class OrderController extends Controller
                     ]
                 ]
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -746,27 +752,6 @@ class OrderController extends Controller
         }
 
         return implode(', ', $addressParts);
-    }
-
-    /**
-     * Helper method to determine card type
-     *
-     * @param string $paymentMethod
-     * @return string
-     */
-    private function determineCardType($paymentMethod)
-    {
-        // This is a simplified example - you would implement your own logic
-        // based on your payment gateway's data structure
-        if (stripos($paymentMethod, 'visa') !== false) {
-            return 'Visa';
-        } elseif (stripos($paymentMethod, 'mastercard') !== false || stripos($paymentMethod, 'master') !== false) {
-            return 'Master Card';
-        } elseif (stripos($paymentMethod, 'amex') !== false || stripos($paymentMethod, 'american express') !== false) {
-            return 'American Express';
-        }
-
-        return 'Credit Card'; // Default
     }
 
     /**
@@ -1078,11 +1063,9 @@ class OrderController extends Controller
                         $productImageUrl = env('APP_ASSET_URL', config('app.url')) . '/storage/' . $imagePath;
                     }
 
-                    // Calculate individual item price (after discount)
-                    $originalPrice = $product ? $product->price : 0;
-                    $discountPercentage = $product ? $product->discount : 0;
-                    $discountAmount = ($originalPrice * $discountPercentage) / 100;
-                    $itemPrice = $originalPrice - $discountAmount;
+                    // Use the actual calculated prices from order items
+                    $itemPrice = $orderItem->total / $orderItem->quantity;
+                    $originalPrice = $itemPrice + ($orderItem->discount / $orderItem->quantity);
 
                     $formattedData[] = [
                         'order_id' => $order->id,
@@ -1095,10 +1078,10 @@ class OrderController extends Controller
                             'product_name' => $product ? $product->name : 'Unknown Product',
                             'product_image' => $productImageUrl,
                             'quantity' => $orderItem->quantity,
-                            'price' => round($itemPrice, 0), // Individual item price after discount
-                            'subtotal' => round($orderItem->total, 0), // Total for this item (quantity * discounted price)
+                            'price' => round($itemPrice, 0),
+                            'subtotal' => round($orderItem->total, 0),
                             'original_price' => round($originalPrice, 0),
-                            'discount_percentage' => $discountPercentage
+                            'discount_percentage' => $product ? $product->discount : 0
                         ]
                     ];
                 }
@@ -1110,7 +1093,6 @@ class OrderController extends Controller
                 'filter' => $statusFilter,
                 'total_items' => count($formattedData)
             ], 200);
-
         } catch (\Exception $e) {
             Log::error('Error fetching user orders by status', [
                 'user_id' => auth()->id(),
@@ -1126,101 +1108,114 @@ class OrderController extends Controller
         }
     }
 
-  public function payhereNotify(Request $request)
-{
-    $merchant_id = $request->input('merchant_id');
-    $order_id = $request->input('order_id');
-    $payhere_amount = $request->input('payhere_amount');
-    $payhere_currency = $request->input('payhere_currency');
-    $status_code = $request->input('status_code');
-    $md5sig = $request->input('md5sig');
+    public function payhereNotify(Request $request)
+    {
+        $merchant_id = $request->input('merchant_id');
+        $order_id = $request->input('order_id');
+        $payhere_amount = $request->input('payhere_amount');
+        $payhere_currency = $request->input('payhere_currency');
+        $status_code = $request->input('status_code');
+        $md5sig = $request->input('md5sig');
 
-    $merchant_secret = config('payhere.merchant_secret');
+        $merchant_secret = config('payhere.merchant_secret');
 
-    $local_md5sig = strtoupper(
-        md5(
-            $merchant_id .
-            $order_id .
-            $payhere_amount .
-            $payhere_currency .
-            $status_code .
-            strtoupper(md5($merchant_secret))
-        )
-    );
+        $local_md5sig = strtoupper(
+            md5(
+                $merchant_id .
+                    $order_id .
+                    $payhere_amount .
+                    $payhere_currency .
+                    $status_code .
+                    strtoupper(md5($merchant_secret))
+            )
+        );
 
-    Log::info('PayHere Notify received', [
-        'order_id' => $order_id,
-        'status_code' => $status_code,
-        'hash_valid' => ($local_md5sig === $md5sig)
-    ]);
+        Log::info('PayHere Notify received', [
+            'order_id' => $order_id,
+            'status_code' => $status_code,
+            'hash_valid' => ($local_md5sig === $md5sig)
+        ]);
 
-    if (($local_md5sig === $md5sig) && ($status_code == 2)) {
-        // Retrieve order data from DATABASE
-        $pendingOrder = PendingPayhereOrder::where('temp_order_id', $order_id)->first();
+        if (($local_md5sig === $md5sig) && ($status_code == 2)) {
+            // Retrieve order data from DATABASE
+            $pendingOrder = PendingPayhereOrder::where('temp_order_id', $order_id)->first();
 
-        if (!$pendingOrder) {
-            Log::error('Order data not found in database', ['temp_order_id' => $order_id]);
-            return response()->json(['status' => 'error', 'message' => 'Order data not found'], 404);
-        }
-
-        $orderData = $pendingOrder->order_data;
-
-        DB::beginTransaction();
-        try {
-            // Re-check stock availability
-            $cartItems = collect($orderData['cart_items']);
-            foreach ($cartItems as $item) {
-                $product = Product::find($item['product_id']);
-                if (!$product || $product->stock < $item['quantity']) {
-                    DB::rollBack();
-                    Log::error('Insufficient stock during payment completion', [
-                        'product_id' => $item['product_id'],
-                        'requested' => $item['quantity'],
-                        'available' => $product ? $product->stock : 0
-                    ]);
-                    return response()->json(['status' => 'error', 'message' => 'Insufficient stock'], 400);
-                }
+            if (!$pendingOrder) {
+                Log::error('Order data not found in database', ['temp_order_id' => $order_id]);
+                return response()->json(['status' => 'error', 'message' => 'Order data not found'], 404);
             }
 
-            // Create the actual order
-            $order = Order::create([
-                'user_id' => $pendingOrder->user_id,
-                'shipping_address' => $orderData['shipping_address'],
-                'payment_method' => $orderData['payment_method'],
-                'status' => 'processing',
-                'total' => $orderData['total'],
-                'discount' => $orderData['discount'],
-                'tax' => $orderData['tax'],
-                'shipping_rate' => $orderData['shipping_rate'],
-                'first_name' => $orderData['first_name'],
-                'last_name' => $orderData['last_name'],
-                'country' => $orderData['country'],
-                'company' => $orderData['company'],
-                'address' => $orderData['address'],
-                'apartment' => $orderData['apartment'],
-                'city' => $orderData['city'],
-                'state' => $orderData['state'],
-                'postal_code' => $orderData['postal_code'],
-                'phone' => $orderData['phone']
-            ]);
+            $orderData = $pendingOrder->order_data;
 
-                // Create order items and deduct stock
+            DB::beginTransaction();
+            try {
+                // Re-check stock availability
+                $cartItems = collect($orderData['cart_items']);
                 foreach ($cartItems as $item) {
                     $product = Product::find($item['product_id']);
-                    $discount_type = $product->discount_type; // NEW
-                    $discount = $product->discount; // EXISTING
-
-                    if ($discount_type === 'percentage') {
-                        $discount_amount = ($product->price * $discount) / 100;
-                    } else {
-                        $discount_amount = $discount;
+                    if (!$product || $product->stock < $item['quantity']) {
+                        DB::rollBack();
+                        Log::error('Insufficient stock during payment completion', [
+                            'product_id' => $item['product_id'],
+                            'requested' => $item['quantity'],
+                            'available' => $product ? $product->stock : 0
+                        ]);
+                        return response()->json(['status' => 'error', 'message' => 'Insufficient stock'], 400);
                     }
+                }
+
+                // Calculate totals with consistent discount calculation
+                $total = 0;
+                $totalItemDiscount = 0;
+                foreach ($cartItems as $item) {
+                    $product = Product::find($item['product_id']);
+                    $priceCalculation = $this->calculateDiscountedPrice($product);
+
+                    $discounted_price = $priceCalculation['final_price'];
+                    $discount_amount = $priceCalculation['discount_amount'];
+
+                    $total += $discounted_price * $item['quantity'];
+                    $totalItemDiscount += $discount_amount * $item['quantity'];
+                }
+
+                // Apply tax and shipping
+                $total = $total + $orderData['tax'] + $orderData['shipping_rate'];
+
+                // Create the actual order
+                $order = Order::create([
+                    'user_id' => $pendingOrder->user_id,
+                    'shipping_address' => $orderData['shipping_address'],
+                    'payment_method' => $orderData['payment_method'],
+                    'status' => 'processing',
+                    'total' => $total,
+                    'discount' => $totalItemDiscount,
+                    'tax' => $orderData['tax'],
+                    'shipping_rate' => $orderData['shipping_rate'],
+                    'first_name' => $orderData['first_name'],
+                    'last_name' => $orderData['last_name'],
+                    'country' => $orderData['country'],
+                    'company' => $orderData['company'],
+                    'address' => $orderData['address'],
+                    'apartment' => $orderData['apartment'],
+                    'city' => $orderData['city'],
+                    'state' => $orderData['state'],
+                    'postal_code' => $orderData['postal_code'],
+                    'phone' => $orderData['phone']
+                ]);
+
+                // Create order items and deduct stock with correct calculations
+                foreach ($cartItems as $item) {
+                    $product = Product::find($item['product_id']);
+                    $priceCalculation = $this->calculateDiscountedPrice($product);
+
+                    $discounted_price = $priceCalculation['final_price'];
+                    $discount_amount = $priceCalculation['discount_amount'];
 
                     OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $item['product_id'],
                         'quantity' => $item['quantity'],
-                        'total' => ($product->price - $discount_amount) * $item['quantity'],
+                        'total' => $discounted_price * $item['quantity'],
                         'discount' => $discount_amount * $item['quantity'],
                     ]);
 
@@ -1229,33 +1224,32 @@ class OrderController extends Controller
                     $product->save();
                 }
 
-            // Clear the user's cart
-            Cart::where('user_id', $pendingOrder->user_id)->delete();
+                // Clear the user's cart
+                Cart::where('user_id', $pendingOrder->user_id)->delete();
 
-            // Delete pending order record
-            $pendingOrder->delete();
+                // Delete pending order record
+                $pendingOrder->delete();
 
-            DB::commit();
+                DB::commit();
 
-            // Send order confirmation email
-            $this->sendOrderConfirmationEmail($order);
+                // Send order confirmation email
+                $this->sendOrderConfirmationEmail($order);
 
-            Log::info('Order created successfully after payment', ['order_id' => $order->id]);
+                Log::info('Order created successfully after payment', ['order_id' => $order->id]);
 
-            return response()->json(['status' => 'ok', 'order_id' => $order->id]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Failed to create order after payment', [
-                'temp_order_id' => $order_id,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+                return response()->json(['status' => 'ok', 'order_id' => $order->id]);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Failed to create order after payment', [
+                    'temp_order_id' => $order_id,
+                    'error' => $e->getMessage()
+                ]);
+                return response()->json(['status' => 'error', 'message' => $e->getMessage()], 500);
+            }
         }
-    }
 
-    return response()->json(['status' => 'ok']);
-}
+        return response()->json(['status' => 'ok']);
+    }
 
     public function payhereReturn(Request $request)
     {
