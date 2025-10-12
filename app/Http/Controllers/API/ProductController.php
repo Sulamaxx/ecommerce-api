@@ -606,26 +606,45 @@ public function getPaginatedProducts(Request $request)
                     ->limit(3)
                     ->get();
 
-                // Format products for this category
-                $formattedProducts = $products->map(function ($product) {
-                    // Calculate sales count
-                    $salesCount = $product->initial_stock - $product->stock;
+// Format products for this category
+$formattedProducts = $products->map(function ($product) {
+    // Calculate sales count
+    $salesCount = $product->initial_stock - $product->stock;
 
-                    // Get the first image or null if no images
-                    $imagePath = $product->images->first()
-                        ? env('APP_ASSET_URL') . '/storage/' . $product->images->first()->path
-                        : null;
+    // Get the first image or null if no images
+    $imagePath = $product->images->first()
+        ? env('APP_ASSET_URL') . '/storage/' . $product->images->first()->path
+        : null;
 
-                    return [
-                        'id' => $product->id,
-                        'name' => $product->name,
-                        'image' => $imagePath,
-                        'price' => (float) $product->price,
-                        'currency' => $product->currency,
-                        'rating' => $product->rating,
-                        'reviews' => $salesCount * 20, // Calculating reviews based on sales for demo
-                    ];
-                });
+    // Calculate discounted price
+    $originalPrice = (float) $product->price;
+    $discountedPrice = $originalPrice;
+    $discount = null;
+
+    if ($product->discount > 0) {
+        $discountedPrice = self::calculateDiscountedPrice(
+            $originalPrice, 
+            $product->discount_type, 
+            $product->discount
+        );
+        $discount = [
+            'type' => $product->discount_type,
+            'value' => (float) $product->discount
+        ];
+    }
+
+    return [
+        'id' => $product->id,
+        'name' => $product->name,
+        'image' => $imagePath,
+        'price' => $discountedPrice, // This is now the discounted price
+        'currency' => $product->currency,
+        'rating' => $product->rating,
+        'reviews' => $salesCount * 20,
+        'originalPrice' => $originalPrice, // Include original price
+        'discount' => $discount // Include discount info
+    ];
+});
 
                 $result[$category] = $formattedProducts;
             }
